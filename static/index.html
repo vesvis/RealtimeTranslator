@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Realtime Translator - Live Voice Translation</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="landing-container">
+        <!-- Animated background -->
+        <div class="bg-gradient"></div>
+        <div class="bg-particles"></div>
+        
+        <!-- Header -->
+        <header class="landing-header">
+            <div class="logo">
+                <span class="logo-icon">🌐</span>
+                <span class="logo-text">Realtime Translator</span>
+            </div>
+        </header>
+        
+        <!-- Hero Section -->
+        <main class="hero">
+            <div class="hero-content">
+                <h1 class="hero-title">
+                    <span class="gradient-text">Live Voice Translation</span>
+                    <br>with Voice Cloning
+                </h1>
+                <p class="hero-subtitle">
+                    Speak in your language. Your audience hears it in theirs — 
+                    <em>in your own voice</em>.
+                </p>
+                
+                <div class="hero-features">
+                    <div class="feature">
+                        <span class="feature-icon">🎤</span>
+                        <span>Real-time Speech Recognition</span>
+                    </div>
+                    <div class="feature">
+                        <span class="feature-icon">🔄</span>
+                        <span>Instant Translation</span>
+                    </div>
+                    <div class="feature">
+                        <span class="feature-icon">🗣️</span>
+                        <span>Voice Cloning Technology</span>
+                    </div>
+                </div>
+                
+                <div class="hero-actions">
+                    <a href="/producer" class="btn btn-primary btn-large">
+                        <span class="btn-icon">🎙️</span>
+                        Start as Speaker
+                    </a>
+                    <button class="btn btn-secondary btn-large" onclick="showJoinModal()">
+                        <span class="btn-icon">🎧</span>
+                        Join as Listener
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Visual illustration -->
+            <div class="hero-visual">
+                <div class="translation-demo">
+                    <div class="demo-bubble speaker">
+                        <div class="bubble-label">Speaker (English)</div>
+                        <div class="bubble-text">"Hello, welcome to our event!"</div>
+                        <div class="sound-waves">
+                            <span></span><span></span><span></span><span></span><span></span>
+                        </div>
+                    </div>
+                    <div class="demo-arrow">
+                        <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
+                            <path d="M5 20H35M35 20L25 10M35 20L25 30" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </div>
+                    <div class="demo-bubble listener">
+                        <div class="bubble-label">Listener (Spanish)</div>
+                        <div class="bubble-text">"¡Hola, bienvenidos a nuestro evento!"</div>
+                        <div class="sound-waves">
+                            <span></span><span></span><span></span><span></span><span></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+        
+        <!-- How it works -->
+        <section class="how-it-works">
+            <h2>How It Works</h2>
+            <div class="steps">
+                <div class="step">
+                    <div class="step-number">1</div>
+                    <div class="step-content">
+                        <h3>Record Voice Sample</h3>
+                        <p>Speak for 30 seconds to clone your voice</p>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-number">2</div>
+                    <div class="step-content">
+                        <h3>Share Session Link</h3>
+                        <p>Give listeners a simple code to join</p>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-number">3</div>
+                    <div class="step-content">
+                        <h3>Start Speaking</h3>
+                        <p>Your words are translated in real-time</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Join Modal -->
+        <div id="joinModal" class="modal">
+            <div class="modal-content">
+                <button class="modal-close" onclick="hideJoinModal()">&times;</button>
+                <h2>Join a Session</h2>
+                <p>Enter the session code shared by the speaker</p>
+                <form onsubmit="joinSession(event)">
+                    <input 
+                        type="text" 
+                        id="sessionCode" 
+                        class="input-large"
+                        placeholder="Enter code (e.g., ABC-123)"
+                        pattern="[A-Za-z0-9\-]+"
+                        required
+                        autocomplete="off"
+                    >
+                    <button type="submit" class="btn btn-primary btn-large btn-full">
+                        Join Session
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        function showJoinModal() {
+            document.getElementById('joinModal').classList.add('active');
+            document.getElementById('sessionCode').focus();
+        }
+        
+        function hideJoinModal() {
+            document.getElementById('joinModal').classList.remove('active');
+        }
+        
+        function joinSession(e) {
+            e.preventDefault();
+            const code = document.getElementById('sessionCode').value.trim().toUpperCase();
+            if (code) {
+                window.location.href = `/listen/${code}`;
+            }
+        }
+        
+        // Close modal on escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') hideJoinModal();
+        });
+        
+        // Close modal on outside click
+        document.getElementById('joinModal').addEventListener('click', (e) => {
+            if (e.target.id === 'joinModal') hideJoinModal();
+        });
+    </script>
+</body>
+</html>

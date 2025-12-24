@@ -1,0 +1,24 @@
+# Web framework
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+python-multipart==0.0.6
+
+# WebSocket support
+websockets==12.0
+
+# HTTP client
+httpx==0.26.0
+
+# AI/ML APIs
+deepgram-sdk==3.1.0
+openai==1.12.0
+elevenlabs==1.1.0
+
+# Environment management
+python-dotenv==1.0.0
+
+# Audio processing & Math
+pyaudio
+pydub==0.25.1
+numpy==1.26.3
+scipy==1.11.4

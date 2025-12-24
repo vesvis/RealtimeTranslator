@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Translation - Realtime Translator</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* Mobile audio unlock overlay */
+        .audio-unlock-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            color: white;
+            text-align: center;
+            padding: 2rem;
+        }
+
+        .audio-unlock-overlay.hidden {
+            display: none;
+        }
+
+        .audio-unlock-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            color: white;
+            padding: 1.5rem 3rem;
+            font-size: 1.25rem;
+            border-radius: 50px;
+            cursor: pointer;
+            margin-top: 1.5rem;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .audio-unlock-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+
+        .audio-unlock-btn:active {
+            transform: translateY(0);
+        }
+
+        .audio-unlock-icon {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+        }
+
+        .audio-unlock-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        .audio-unlock-subtitle {
+            font-size: 1rem;
+            opacity: 0.8;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Audio Unlock Overlay for Mobile -->
+    <div id="audioUnlockOverlay" class="audio-unlock-overlay">
+        <div class="audio-unlock-icon">🔊</div>
+        <div class="audio-unlock-title">Enable Audio</div>
+        <div class="audio-unlock-subtitle">Tap the button below to enable live translation audio</div>
+        <button id="audioUnlockBtn" class="audio-unlock-btn">
+            🎧 Enable Audio
+        </button>
+    </div>
+
+    <div class="listener-container">
+        <div class="bg-gradient"></div>
+
+        <!-- Main Card -->
+        <div class="listener-card card">
+            <!-- Connection Status -->
+            <div id="connectionStatus" class="listener-status connecting">
+                <span class="status-dot"></span>
+                <span id="statusText">Connecting...</span>
+            </div>
+
+            <!-- Session Info -->
+            <h1 id="sessionName" class="mb-sm">Translation Session</h1>
+            <p id="sessionDetails" class="text-muted mb-lg">
+                Session: <span id="sessionCodeDisplay">---</span>
+            </p>
+
+            <!-- Audio Visualizer -->
+            <div id="audioVisualizer" class="audio-visualizer">
+                <div class="bar"></div>
+                <div class="bar"></div>
+                <div class="bar"></div>
+                <div class="bar"></div>
+                <div class="bar"></div>
+                <div class="bar"></div>
+                <div class="bar"></div>
+                <div class="bar"></div>
+                <div class="bar"></div>
+            </div>
+
+            <!-- Volume Control -->
+            <div class="volume-control">
+                <span class="volume-icon">🔊</span>
+                <input type="range" id="volumeSlider" class="volume-slider" min="0" max="100" value="80">
+                <span id="volumeValue">80%</span>
+            </div>
+
+            <!-- Live Transcript -->
+            <div class="live-transcript">
+                <div class="live-transcript-label">Live Translation</div>
+                <div id="liveTranscriptText" class="live-transcript-text">
+                    Waiting for translation...
+                </div>
+            </div>
+
+            <!-- Language Info -->
+            <div class="mt-lg text-center text-muted" style="font-size: 0.875rem;">
+                Listening in: <strong id="targetLanguage">English</strong>
+            </div>
+
+            <!-- Error message -->
+            <div id="errorMessage" class="mt-lg text-center hidden" style="color: var(--error);">
+                Session not found. Please check the link and try again.
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/audio-utils.js"></script>
+    <script src="/static/js/listener.js"></script>
+</body>
+
+</html>
