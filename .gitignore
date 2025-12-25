@@ -16,3 +16,7 @@ recordings/
 # OS
 .DS_Store
 Thumbs.db
+
+# Custom local configs (not shared)
+custom_voices.json
+prompts.json

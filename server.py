@@ -71,7 +71,7 @@ LANGUAGES = [
 ]
 
 # Available ElevenLabs voices (id, name, description)
-VOICES = [
+BUILTIN_VOICES = [
     ("29vD33N1CtxCmqQRPOHJ", "Drew", "Male - Main Speaker"),
     ("bIHbv24MWmeRgasZH58o", "Will", "Male - Relaxed, Casual"),
     ("iP95p4xoKVk53GoZ742B", "Chris", "Male - Friendly, Down-to-Earth"),
@@ -81,6 +81,23 @@ VOICES = [
     ("onwK4e9ZLuTAKqWW03F9", "Daniel", "Male - British, Steady"),
     ("JBFqnCBsd6RMkjVDRZzb", "George", "Male - British, Warm"),
 ]
+
+def load_custom_voices():
+    """Load custom voices from custom_voices.json if it exists."""
+    custom_file = os.path.join(os.path.dirname(__file__), "custom_voices.json")
+    try:
+        with open(custom_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            custom = data.get("custom_voices", [])
+            return [(v["id"], v["name"], v.get("description", "Custom")) for v in custom]
+    except FileNotFoundError:
+        return []
+    except (json.JSONDecodeError, KeyError) as e:
+        print(f"Warning: Error loading custom_voices.json: {e}")
+        return []
+
+# Merge custom voices (at top) with built-in voices
+VOICES = load_custom_voices() + BUILTIN_VOICES
 
 # Speaker voice mapping for diarization (speaker_id -> voice_id)
 # Names are set dynamically via get_speaker_name()
@@ -92,8 +109,11 @@ SPEAKER_VOICES = {
 
 # ============== Translation Prompts ==============
 
-# Default fallback prompt if prompts.json is missing
-DEFAULT_TRANSLATION_PROMPT = """You are an expert simultaneous interpreter. Translate the spoken text naturally.
+# Default prompt (always available, embedded in code)
+DEFAULT_PROMPT = {
+    "name": "Default Translator",
+    "description": "General-purpose translation with natural speech formatting",
+    "prompt": """You are an expert simultaneous interpreter. Translate the spoken text naturally.
 
 **INPUT DATA:**
 - [CONTEXT]: Previous sentences for continuity.
@@ -106,22 +126,23 @@ DEFAULT_TRANSLATION_PROMPT = """You are an expert simultaneous interpreter. Tran
 4. Use "||" on its own line for major topic shifts.
 
 **Output:** Provide ONLY the translation with line breaks."""
+}
 
-def load_prompts():
-    """Load translation prompts from prompts.json"""
+def load_custom_prompts():
+    """Load custom translation prompts from prompts.json if it exists."""
     prompts_file = os.path.join(os.path.dirname(__file__), "prompts.json")
     try:
         with open(prompts_file, "r", encoding="utf-8") as f:
             return json.load(f)
     except FileNotFoundError:
-        print("Warning: prompts.json not found, using default prompt")
-        return {"default": {"name": "Default", "description": "Default translator", "prompt": DEFAULT_TRANSLATION_PROMPT}}
+        return {}
     except json.JSONDecodeError as e:
         print(f"Warning: Error parsing prompts.json: {e}")
-        return {"default": {"name": "Default", "description": "Default translator", "prompt": DEFAULT_TRANSLATION_PROMPT}}
+        return {}
 
-# Load available prompts
-TRANSLATION_PROMPTS = load_prompts()
+# Build prompts dict: default (always available) + custom prompts from file
+TRANSLATION_PROMPTS = {"default": DEFAULT_PROMPT}
+TRANSLATION_PROMPTS.update(load_custom_prompts())
 
 def get_prompt(prompt_key: str) -> str:
     """Get a translation prompt by key."""
