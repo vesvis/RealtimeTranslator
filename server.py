@@ -82,12 +82,12 @@ VOICES = [
     ("JBFqnCBsd6RMkjVDRZzb", "George", "Male - British, Warm"),
 ]
 
-# Speaker voice mapping for diarization (speaker_id -> voice_id, voice_name)
-# Speaker 0 = Main speaker, Speaker 1 & 2 = Contributors
+# Speaker voice mapping for diarization (speaker_id -> voice_id)
+# Names are set dynamically via get_speaker_name()
 SPEAKER_VOICES = {
-    0: ("29vD33N1CtxCmqQRPOHJ", "Drew"),      # Main speaker
-    1: ("bIHbv24MWmeRgasZH58o", "Will"),       # Contributor 1 - Relaxed
-    2: ("iP95p4xoKVk53GoZ742B", "Chris"),      # Contributor 2 - Friendly
+    0: "29vD33N1CtxCmqQRPOHJ",  # Main speaker - Drew voice
+    1: "bIHbv24MWmeRgasZH58o",  # Contributor 1 - Will voice
+    2: "iP95p4xoKVk53GoZ742B",  # Contributor 2 - Chris voice
 }
 
 # Risale-i Nur domain-specific keywords for Deepgram (no boost, just recognition hints)
@@ -109,43 +109,49 @@ RISALE_KEYWORDS = [
     "Alemi Şehadet", "Alemi Gayb", "Alemi Berzah"
 ]
 
-# Specialized translation system prompt for Risale-i Nur lectures
-RISALE_TRANSLATION_PROMPT = """You are an expert simultaneous interpreter translating "Risale-i Nur" theological lectures from Turkish to English.
+# Specialized translation system prompt for Risale-i Nur lectures (Paragraph Mode)
+RISALE_TRANSLATION_PROMPT = """You are an expert simultaneous interpreter for the "Risale-i Nur". You are receiving a complete, buffered block of spoken text.
 
 **INPUT DATA:**
-- [PREVIOUS_CONTEXT]: Recently spoken sentences (Read-only context).
-- [TARGET_SEGMENT]: The text you must translate now.
-- [NEXT_SEGMENT_PREVIEW]: The upcoming sentence (use this to resolve ambiguous cut-offs or unfinished thoughts).
+- [CONTEXT]: The previous few sentences (read-only, for continuity).
+- [TARGET_BATCH]: A complete block of recent speech to translate.
 
-**CRITICAL INSTRUCTIONS:**
+**CORE INSTRUCTIONS:**
+1. **Wait for the Verb:** You have the full Turkish sentence. Locate the main verb (usually at the end) and construct a grammatically perfect English sentence (SVO structure).
+2. **Smoothing:** The input is spoken text. Remove stuttering, false starts, or self-corrections. Make the English output fluent and clean.
+3. **Tone Strategy:**
+   - **Default:** Formal, dignified, academic (Theology).
+   - **EXCEPTION:** If the text is a direct command or warning (imperative), switch to **Punchy, Idiomatic English** (e.g., use "Come to your senses!" instead of "Take your head among your hands").
 
-1. **ASR ERROR CORRECTION (Phonetic Repair):**
-   The input text originates from real-time speech recognition and may contain phonetic errors. Infer the intended word based on theological context.
-   - Common Fixes:
-     - "Liman" (port) → Correct to "Lem'a" (The Flash) when citing books.
-     - "Şua" (light/beam) → Correct to "The Ray" (Book title: Şualar).
-     - "Laan turcusu" → Correct to idiom "lahana turşusu" (contradiction).
-     - "Bicrim" → Correct to "Cirim" (particle/body).
+**CRITICAL: PHONETIC & TERMINOLOGY REPAIR:**
+   - The input contains ASR (Speech-to-Text) errors. You MUST infer the intended word from context.
+   - **Common Phonetic Corrections:**
+     - "Liman" (port) → Correct to **"Lem'a"** (The Flash) when citing books.
+     - "live cil/cillah" → Correct to **"li-vechillâh"** (for the sake of God).
+     - "laan turcusu" → Correct to idiom **"lahana turşusu"** (contradiction).
+     - "Bicrim" → Correct to **"Cirim"** (particle/body).
+   - **Standard Terms:**
+     - Üstad → Üstad
+     - Cenab-ı Hak → Almighty God
+     - Ene → The Ego
+     - Tevhid → Divine Unity
+     - Haşir → Resurrection
+     - Esma-i Hüsna → The Divine Names
+     - Abi / Kardeş → Brother
 
-2. **THEOLOGICAL TERMINOLOGY MAPPING:**
-   - Üstad → Keep as "Üstad" (do not translate as Master/Teacher).
-   - Cenab-ı Hak → "Almighty God"
-   - Tevhid → "Divine Unity"
-   - Ene → "The Ego" or "The Self"
-   - Haşir → "Resurrection"
-   - Esma-i Hüsna → "The Divine Names"
-   - Abi / Kardeş → "Brother" (Community context).
+**OUTPUT FORMAT FOR NATURAL SPEECH:**
+   - Output each distinct sentence on a NEW LINE for natural pauses.
+   - When there is a MAJOR shift (e.g., speaker says "let's continue reading" or transitions from explanation to quotation), insert "||" on its own line to indicate a longer pause.
+   - Example:
+     ```
+     This is the first point.
+     And this explains it further.
+     ||
+     Now let us read from the text.
+     "The truth manifests itself clearly."
+     ```
 
-3. **TONE & DELIVERY (Text-to-Speech Optimization):**
-   - Output ONLY the English translation.
-   - The output must be natural, spoken English. Avoid robotic or academic phrasing.
-   - If the speaker reads from a book: Use formal, elevated language.
-   - If the speaker is explaining/joking: Use conversational, relaxed language.
-
-4. **CONTEXTUAL CONTINUITY:**
-   - If [TARGET_SEGMENT] is a sentence fragment that completes in [NEXT_SEGMENT_PREVIEW], translate it as a cohesive partial thought, using ellipses (...) if necessary.
-
-**Output:** Provide only the English translation of the [TARGET_SEGMENT]."""
+**Output:** Provide ONLY the English translation with line breaks as described."""
 
 # Runtime config (set by interactive menu)
 config = {
@@ -159,7 +165,19 @@ config = {
     "mic_device_name": "Default",
     "use_risale_context": True,  # Enable Risale-i Nur specific context
     "session_id": "LECTURE",  # Custom session ID for persistent listener links
+    "main_speaker_name": "Speaker",  # Name displayed for main speaker
 }
+
+def get_speaker_name(speaker_id: int) -> str:
+    """Get display name for a speaker based on ID."""
+    if speaker_id == 0:
+        return config.get("main_speaker_name", "Speaker")
+    else:
+        return f"Contributor {speaker_id}"
+
+def get_speaker_voice(speaker_id: int) -> str:
+    """Get voice ID for a speaker."""
+    return SPEAKER_VOICES.get(speaker_id, SPEAKER_VOICES[0])
 
 # ============== API Clients ==============
 
@@ -231,82 +249,95 @@ class ProducerState:
         self.audio_thread: Optional[threading.Thread] = None
         self.pyaudio_instance: Optional[pyaudio.PyAudio] = None
         self.stream = None
-        self.sentence_buffer = []
         self.current_speaker = 0  # Track current speaker for diarization
         self.loop: Optional[asyncio.AbstractEventLoop] = None
         # Reconnection state
         self.is_reconnecting = False
         self.connection_healthy = False
         # Buffer timeout tracking
-        self.last_buffer_update = 0.0
         self.buffer_timeout_task: Optional[asyncio.Task] = None
-        # Translation buffer for look-ahead (1-segment lag)
+        # Translation buffer for time-based sentence accumulation
         self.translation_buffer: Optional['TranslationBuffer'] = None
 
 producer = ProducerState()
 
 
 class TranslationBuffer:
-    """Buffer queue for look-ahead translation with 1-segment lag.
+    """Smart buffer for accumulated sentence-boundary translation.
     
-    Implements the buffering logic that allows the translation engine to
-    'see ahead' by one segment, improving sentence continuity and context.
+    Accumulates text until detecting a complete thought based on:
+    - Semantic: Ends with strong punctuation AND >= min_words
+    - Timeout: Buffer held > timeout_seconds (prevents stalling)
     """
     
-    def __init__(self):
-        self.queue = []  # List of (text, speaker_id) tuples
-        self.history = []  # List of original texts for context (last 5)
+    def __init__(self, timeout_seconds: float = 15.0, min_words: int = 15):
+        self.buffer = ""
+        self.last_flush_time = time.time()
+        self.history = []  # Last 3 sentences for context (original Turkish)
+        self.timeout_seconds = timeout_seconds
+        self.min_words = min_words
+        self.current_speaker = 0  # Track speaker for the buffered content
     
-    def add_segment(self, text: str, speaker_id: int):
-        """Add a new segment to the buffer queue."""
-        self.queue.append((text, speaker_id))
+    def add_segment(self, text: str, speaker_id: int = 0):
+        """Append incoming ASR text to buffer."""
+        self.buffer = (self.buffer + " " + text).strip()
+        self.current_speaker = speaker_id
     
-    def can_translate(self) -> bool:
-        """Check if we have enough segments to translate (need >= 2)."""
-        return len(self.queue) >= 2
+    def should_flush(self) -> bool:
+        """Check if buffer should be flushed for translation."""
+        if not self.buffer.strip():
+            return False
+        
+        # Condition A: Semantic - strong punctuation AND long enough
+        has_punctuation = self.buffer.strip().endswith(('.', '?', '!'))
+        word_count = len(self.buffer.split())
+        is_long_enough = word_count >= self.min_words
+        
+        # Condition B: Timeout - prevents stalling
+        time_elapsed = time.time() - self.last_flush_time
+        is_timeout = time_elapsed > self.timeout_seconds
+        
+        return (has_punctuation and is_long_enough) or is_timeout
     
-    def get_translation_batch(self):
-        """Get target segment and next preview when ready.
+    def get_buffer_content(self) -> str:
+        """Get current buffer content without flushing."""
+        return self.buffer.strip()
+    
+    def get_word_count(self) -> int:
+        """Get current word count in buffer."""
+        return len(self.buffer.split()) if self.buffer else 0
+    
+    def get_time_elapsed(self) -> float:
+        """Get seconds since last flush."""
+        return time.time() - self.last_flush_time
+    
+    def flush(self) -> tuple:
+        """Get buffer content and history for translation.
         
         Returns:
-            tuple: (target_text, speaker_id, next_preview, history) or None
+            tuple: (content, speaker_id, history)
         """
-        if not self.can_translate():
-            return None
+        content = self.buffer.strip()
+        history = self.history.copy()
+        speaker_id = self.current_speaker
         
-        # Target is the oldest segment (first in queue)
-        target_text, speaker_id = self.queue[0]
-        # Next preview is the second segment
-        next_preview = self.queue[1][0] if len(self.queue) > 1 else None
-        
-        return (target_text, speaker_id, next_preview, self.history.copy())
-    
-    def commit_translation(self, text: str):
-        """After translation, move target to history and pop from queue."""
-        if self.queue:
-            self.queue.pop(0)
-            self.history.append(text)
-            # Keep history limited to last 5
-            if len(self.history) > 5:
+        # Move original text to history for context
+        if content:
+            self.history.append(content)
+            if len(self.history) > 3:  # Keep last 3 sentences
                 self.history.pop(0)
-    
-    def flush(self):
-        """Force-process remaining segments (e.g., on speaker change or timeout).
         
-        Returns:
-            List of (text, speaker_id) tuples to process immediately
-        """
-        remaining = self.queue.copy()
-        self.queue = []
-        return remaining
+        self.buffer = ""
+        self.last_flush_time = time.time()
+        return content, speaker_id, history
     
     def has_pending(self) -> bool:
-        """Check if there are any pending segments."""
-        return len(self.queue) > 0
+        """Check if there is any pending text in buffer."""
+        return bool(self.buffer.strip())
     
     def pending_count(self) -> int:
-        """Get the number of pending segments."""
-        return len(self.queue)
+        """Get approximate 'count' - here just 1 if has content, 0 otherwise."""
+        return 1 if self.buffer.strip() else 0
 
 # ============== Recording Manager ==============
 
@@ -403,6 +434,19 @@ class RecordingManager:
             duration_min = duration_sec / 60
             print(f"✅ Merged recording saved: full_recording.mp3 ({duration_min:.1f} min)")
             
+            # Clean up individual segment files after successful merge
+            deleted_count = 0
+            for audio_path, _ in self.audio_segments:
+                try:
+                    if os.path.exists(audio_path):
+                        os.remove(audio_path)
+                        deleted_count += 1
+                except Exception as del_err:
+                    print(f"   Warning: Could not delete segment {audio_path}: {del_err}")
+            
+            if deleted_count > 0:
+                print(f"🗑️  Cleaned up {deleted_count} segment files")
+            
             return merged_path
             
         except Exception as e:
@@ -452,48 +496,39 @@ CONTEXT_BUFFER_SIZE = int(os.getenv("CONTEXT_BUFFER_SIZE", "5"))
 translation_context = []  # List of (original, translation) tuples
 
 
-def construct_payload(history: list, current: str, next_segment: str = None) -> str:
+def construct_payload(history: list, current: str) -> str:
     """Construct a structured payload with context for translation.
     
     Args:
-        history: List of previous translated segments (up to 5)
-        current: The current segment to translate
-        next_segment: Optional preview of the next incoming segment
+        history: List of previous original Turkish sentences (up to 3)
+        current: The current batch of text to translate
     
     Returns:
         Formatted string with XML-style delimiters
     """
     payload_parts = []
     
-    # Previous context (read-only for model reference)
+    # Context (read-only for model reference)
     if history:
-        payload_parts.append("[PREVIOUS_CONTEXT]")
-        for segment in history[-5:]:  # Last 5 segments
+        payload_parts.append("[CONTEXT]")
+        for segment in history[-3:]:  # Last 3 sentences
             payload_parts.append(segment)
-        payload_parts.append("[/PREVIOUS_CONTEXT]")
+        payload_parts.append("[/CONTEXT]")
         payload_parts.append("")
     
-    # Target segment (what to translate)
-    payload_parts.append("[TARGET_SEGMENT]")
+    # Target batch (what to translate)
+    payload_parts.append("[TARGET_BATCH]")
     payload_parts.append(current)
-    payload_parts.append("[/TARGET_SEGMENT]")
-    
-    # Next segment preview (for sentence completion)
-    if next_segment:
-        payload_parts.append("")
-        payload_parts.append("[NEXT_SEGMENT_PREVIEW]")
-        payload_parts.append(next_segment)
-        payload_parts.append("[/NEXT_SEGMENT_PREVIEW]")
+    payload_parts.append("[/TARGET_BATCH]")
     
     return "\n".join(payload_parts)
 
-async def translate_text(text: str, history: list = None, next_segment: str = None) -> str:
+async def translate_text(text: str, history: list = None) -> str:
     """Translate text using OpenAI with context-aware prompting.
     
     Args:
         text: The text to translate
         history: Optional list of previous original texts for context
-        next_segment: Optional preview of the next incoming segment
     """
     global translation_context
     
@@ -504,8 +539,7 @@ async def translate_text(text: str, history: list = None, next_segment: str = No
             # Use structured payload with XML-style context delimiters
             user_content = construct_payload(
                 history=history or [],
-                current=text,
-                next_segment=next_segment
+                current=text
             )
         else:
             system_prompt = f"You are a translator. Translate the following {active_session.source_lang_name} text to {active_session.target_lang_name}. Only output the translation, nothing else."
@@ -533,19 +567,38 @@ async def translate_text(text: str, history: list = None, next_segment: str = No
         print(f"Translation error: {e}")
         return "[Translation error]"
 
+def format_text_for_tts(text: str) -> str:
+    """Format translation text for natural TTS with SSML breaks.
+    
+    Converts:
+    - '||' markers → 1.5 second pause (major section break)
+    - Line breaks → 0.5 second pause (sentence break)
+    """
+    import re
+    
+    # Replace || with long pause
+    text = re.sub(r'\s*\|\|\s*', ' <break time="1.5s"/> ', text)
+    
+    # Replace line breaks with short pause (but not multiple)
+    text = re.sub(r'\n+', ' <break time="0.5s"/> ', text)
+    
+    # Clean up multiple spaces
+    text = re.sub(r'\s+', ' ', text).strip()
+    
+    return text
+
 
 async def generate_speech(text: str, speaker_id: int = 0) -> Optional[bytes]:
     """Generate speech using ElevenLabs with speaker-specific voice"""
     try:
         # Get voice based on speaker ID (for diarization)
-        if speaker_id in SPEAKER_VOICES:
-            voice_id, voice_name = SPEAKER_VOICES[speaker_id]
-        else:
-            # Fallback to main speaker voice for unknown speaker IDs
-            voice_id, voice_name = SPEAKER_VOICES[0]
+        voice_id = get_speaker_voice(speaker_id)
+        
+        # Format text with SSML breaks for natural pauses
+        formatted_text = format_text_for_tts(text)
         
         audio = elevenlabs_client.generate(
-            text=text,
+            text=formatted_text,
             voice=voice_id,
             model="eleven_turbo_v2"
         )
@@ -579,14 +632,13 @@ async def broadcast_to_listeners(message: dict):
 MIN_WORDS_TO_PROCESS = 3
 
 async def process_complete_sentence(text: str, speaker_id: int = 0,
-                                      history: list = None, next_segment: str = None):
+                                      history: list = None):
     """Process a complete sentence through the translation + TTS pipeline.
     
     Args:
         text: The text to translate
         speaker_id: ID of the speaker for voice selection
         history: Optional list of previous texts for context
-        next_segment: Optional preview of next segment
     """
     if not active_session or not active_session.is_live:
         return
@@ -598,20 +650,19 @@ async def process_complete_sentence(text: str, speaker_id: int = 0,
         return
     
     # Get speaker name for display
-    if speaker_id in SPEAKER_VOICES:
-        _, speaker_name = SPEAKER_VOICES[speaker_id]
-    else:
-        speaker_name = f"Speaker {speaker_id}"
+    speaker_name = get_speaker_name(speaker_id)
     
     # Clear the buffering line and show the translation
-    print(" " * 80, end="\r")  # Clear buffering line
-    print(f"\n{'─'*50}")
-    print(f"🎤 [{speaker_name}] [{active_session.source_lang_name}] {text}")
+    print(" " * 120, end="\r")  # Clear buffering line
+    print(f"\n{'─'*60}")
+    print(f"🎤 [{speaker_name}] [{active_session.source_lang_name}]")
+    print(f"   {text}")
     
     # Translate with context
-    translation = await translate_text(text, history=history, next_segment=next_segment)
-    print(f"🔊 [{speaker_name}] [{active_session.target_lang_name}] {translation}")
-    print(f"{'─'*50}")
+    translation = await translate_text(text, history=history)
+    print(f"🔊 [{speaker_name}] [{active_session.target_lang_name}]")
+    print(f"   {translation}")
+    print(f"{'─'*60}")
     
     # Generate TTS with speaker-specific voice
     audio_data = await generate_speech(translation, speaker_id)
@@ -637,7 +688,7 @@ async def process_complete_sentence(text: str, speaker_id: int = 0,
 # ============== Deepgram Handlers ==============
 
 def on_transcript(self, result, **kwargs):
-    """Handle incoming transcription from Deepgram with speaker diarization and look-ahead buffering."""
+    """Handle incoming transcription from Deepgram with buffered sentence-boundary translation."""
     transcript = result.channel.alternatives[0].transcript
     is_final = result.is_final
     words = result.channel.alternatives[0].words
@@ -648,80 +699,51 @@ def on_transcript(self, result, **kwargs):
     # Extract speaker ID from diarization (if available)
     speaker_id = producer.current_speaker  # Default to current speaker
     if words and len(words) > 0:
-        # Get speaker from first word of this transcript
         first_word = words[0]
         if hasattr(first_word, 'speaker') and first_word.speaker is not None:
-            # Cap speaker ID at 2 (we only have 3 voices: 0, 1, 2)
-            speaker_id = min(first_word.speaker, 2)
+            speaker_id = min(first_word.speaker, 2)  # Cap at 2 voices
     
     if is_final:
-        # Check if speaker changed - if so, flush the buffers first
-        if speaker_id != producer.current_speaker:
-            # Flush sentence buffer
-            if producer.sentence_buffer:
-                partial_text = " ".join(producer.sentence_buffer).strip()
-                if partial_text and producer.translation_buffer:
-                    producer.translation_buffer.add_segment(partial_text, producer.current_speaker)
-                producer.sentence_buffer = []
-            
-            # Flush translation buffer - process all pending without look-ahead
-            if producer.translation_buffer and producer.translation_buffer.has_pending():
-                remaining = producer.translation_buffer.flush()
-                for seg_text, seg_speaker in remaining:
-                    if producer.loop:
-                        asyncio.run_coroutine_threadsafe(
-                            process_complete_sentence(seg_text, seg_speaker),
-                            producer.loop
-                        )
+        # Check if speaker changed - if so, flush the buffer first
+        if speaker_id != producer.current_speaker and producer.translation_buffer:
+            if producer.translation_buffer.has_pending():
+                content, old_speaker, history = producer.translation_buffer.flush()
+                if content and producer.loop:
+                    asyncio.run_coroutine_threadsafe(
+                        process_complete_sentence(content, old_speaker, history=history),
+                        producer.loop
+                    )
         
         # Update current speaker
         producer.current_speaker = speaker_id
         
-        # Add to sentence buffer and track update time
-        producer.sentence_buffer.append(transcript)
-        producer.last_buffer_update = time.time()
-        full_text = " ".join(producer.sentence_buffer)
-        
-        # Check if we have a complete sentence (ends with . ! ?)
-        if full_text.strip() and full_text.strip()[-1] in '.!?':
-            text_to_translate = full_text.strip()
-            producer.sentence_buffer = []  # Reset buffer
-            producer.last_buffer_update = 0.0  # Reset timeout
+        # Add transcript to buffer
+        if producer.translation_buffer:
+            producer.translation_buffer.add_segment(transcript, speaker_id)
             
-            # Add to translation buffer for look-ahead processing
-            if producer.translation_buffer:
-                producer.translation_buffer.add_segment(text_to_translate, speaker_id)
-                
-                # Process if we have enough segments (>= 2 for look-ahead)
-                while producer.translation_buffer.can_translate():
-                    batch = producer.translation_buffer.get_translation_batch()
-                    if batch and producer.loop:
-                        target_text, target_speaker, next_preview, history = batch
-                        asyncio.run_coroutine_threadsafe(
-                            process_complete_sentence(
-                                target_text, target_speaker,
-                                history=history, next_segment=next_preview
-                            ),
-                            producer.loop
-                        )
-                        producer.translation_buffer.commit_translation(target_text)
-            else:
-                # Fallback: direct processing if buffer not initialized
-                if producer.loop:
+            # Check if we should flush (semantic + length OR timeout)
+            if producer.translation_buffer.should_flush():
+                content, flush_speaker, history = producer.translation_buffer.flush()
+                if content and producer.loop:
                     asyncio.run_coroutine_threadsafe(
-                        process_complete_sentence(text_to_translate, speaker_id),
+                        process_complete_sentence(content, flush_speaker, history=history),
                         producer.loop
                     )
-        else:
-            # Show buffering status with speaker
-            speaker_name = SPEAKER_VOICES.get(speaker_id, (None, f"Speaker {speaker_id}"))[1]
-            pending = producer.translation_buffer.pending_count() if producer.translation_buffer else 0
-            print(f"  [{speaker_name}] (buffering: {full_text}) [queue: {pending}]", end="\r")
+            else:
+                # Show buffering status
+                speaker_name = get_speaker_name(speaker_id)
+                word_count = producer.translation_buffer.get_word_count()
+                time_elapsed = producer.translation_buffer.get_time_elapsed()
+                buffer_preview = producer.translation_buffer.get_buffer_content()[:60]
+                if len(producer.translation_buffer.get_buffer_content()) > 60:
+                    buffer_preview += "..."
+                print(f"  [{speaker_name}] ({word_count}w, {time_elapsed:.0f}s/{producer.translation_buffer.timeout_seconds:.0f}s) {buffer_preview}", end="\r")
     else:
-        # Show interim results with speaker
-        current = " ".join(producer.sentence_buffer) + " " + transcript if producer.sentence_buffer else transcript
-        speaker_name = SPEAKER_VOICES.get(speaker_id, (None, f"Speaker {speaker_id}"))[1]
-        print(f"  [{speaker_name}] ... {current}", end="\r")
+        # Show interim results
+        buffer_content = producer.translation_buffer.get_buffer_content() if producer.translation_buffer else ""
+        current = buffer_content + " " + transcript if buffer_content else transcript
+        speaker_name = get_speaker_name(speaker_id)
+        print(f"  [{speaker_name}] ... {current[:100]}", end="\r")
 
 def on_error(self, error, **kwargs):
     print(f"\n⚠️  Deepgram ERROR: {error}")
@@ -811,39 +833,21 @@ async def reconnect_deepgram(retry_count: int = 0):
             print(f"   Will retry in {min(INITIAL_RECONNECT_DELAY * (2 ** (retry_count + 1)), MAX_RECONNECT_DELAY)} seconds...")
             asyncio.create_task(reconnect_deepgram(retry_count + 1))
 
-BUFFER_TIMEOUT_SECONDS = 3.0  # Force-process buffer after 3 seconds
+# Buffer timeout is now handled by TranslationBuffer.should_flush(), but we still
+# need a background checker to trigger flushes when speaker is idle
 
 async def buffer_timeout_checker():
-    """Background task that force-processes buffered sentences after timeout"""
+    """Background task that checks for translation buffer timeout."""
     while producer.is_running:
-        await asyncio.sleep(1)  # Check every second
+        await asyncio.sleep(2)  # Check every 2 seconds
         
-        # Check if we have buffered text that's been waiting too long
-        if (producer.sentence_buffer and 
-            producer.last_buffer_update > 0 and
-            time.time() - producer.last_buffer_update >= BUFFER_TIMEOUT_SECONDS):
-            
-            # Force-process the buffered text
-            full_text = " ".join(producer.sentence_buffer).strip()
-            if full_text:
-                speaker_id = producer.current_speaker
-                print(f"\n⏱️  Buffer timeout - processing incomplete sentence...")
-                producer.sentence_buffer = []
-                producer.last_buffer_update = 0.0
-                
-                # Add to translation buffer instead of direct processing
-                if producer.translation_buffer:
-                    producer.translation_buffer.add_segment(full_text, speaker_id)
-        
-        # Also check translation buffer - flush if oldest item has been waiting
+        # Check if translation buffer should be flushed (timeout condition)
         if producer.translation_buffer and producer.translation_buffer.has_pending():
-            # If we have pending items but no new segments coming in, flush after timeout
-            if (producer.last_buffer_update == 0.0 and 
-                not producer.sentence_buffer):
-                print(f"\n⏱️  Translation queue timeout - flushing pending segments...")
-                remaining = producer.translation_buffer.flush()
-                for seg_text, seg_speaker in remaining:
-                    await process_complete_sentence(seg_text, seg_speaker)
+            if producer.translation_buffer.should_flush():
+                print(f"\n⏱️  Buffer timeout ({producer.translation_buffer.timeout_seconds}s) - processing accumulated text...")
+                content, speaker_id, history = producer.translation_buffer.flush()
+                if content:
+                    await process_complete_sentence(content, speaker_id, history=history)
 
 # ============== Audio Capture ==============
 
@@ -1261,15 +1265,28 @@ def interactive_setup() -> None:
         config["session_id"] = default_session
     print(f"  ✓ Session ID: {config['session_id']}")
     
+    # Main speaker name
+    print("\n" + "-" * 50)
+    print("Main Speaker Name (displayed to listeners)")
+    default_speaker = config.get("main_speaker_name", "Speaker")
+    speaker_input = input(f"  Enter main speaker name [default: {default_speaker}]: ").strip()
+    if speaker_input:
+        config["main_speaker_name"] = speaker_input[:30]  # Limit length
+    else:
+        config["main_speaker_name"] = default_speaker
+    print(f"  ✓ Main Speaker: {config['main_speaker_name']}")
+    print("     (Other speakers will be shown as 'Contributor 1', 'Contributor 2')")
+    
     # Summary
     print("\n" + "=" * 50)
     print("   CONFIGURATION SUMMARY")
     print("=" * 50)
-    print(f"  Source:     {config['source_lang_name']} ({config['source_lang']})")
-    print(f"  Target:     {config['target_lang_name']} ({config['target_lang']})")
-    print(f"  Voice:      {config['voice_name']}")
-    print(f"  Microphone: {config['mic_device_name']}")
-    print(f"  Session ID: {config['session_id']}")
+    print(f"  Source:       {config['source_lang_name']} ({config['source_lang']})")
+    print(f"  Target:       {config['target_lang_name']} ({config['target_lang']})")
+    print(f"  Voice:        {config['voice_name']}")
+    print(f"  Microphone:   {config['mic_device_name']}")
+    print(f"  Session ID:   {config['session_id']}")
+    print(f"  Main Speaker: {config['main_speaker_name']}")
     print(f"  Listener URL: http://localhost:8000/listen/{config['session_id']}")
     print("=" * 50)
     

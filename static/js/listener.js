@@ -12,6 +12,10 @@ let pendingAudioQueue = [];
 let audioElement = null;
 let isPlaying = false;
 
+// Initial buffering: wait for this many segments before starting playback
+const MIN_INITIAL_BUFFER = 2;
+let initialBufferFilled = false;  // Has initial buffer been filled?
+
 // Debug logging for mobile
 function debugLog(message) {
     console.log(message);
@@ -136,8 +140,39 @@ function playNextInQueue() {
         return;
     }
 
+    // Check if initial buffer is ready
+    if (!initialBufferFilled) {
+        if (pendingAudioQueue.length >= MIN_INITIAL_BUFFER) {
+            initialBufferFilled = true;
+            console.log(`Initial buffer filled (${MIN_INITIAL_BUFFER} segments), starting playback`);
+            updateBufferStatus();
+        } else {
+            // Still buffering, don't play yet
+            console.log(`Buffering... ${pendingAudioQueue.length}/${MIN_INITIAL_BUFFER}`);
+            updateBufferStatus();
+            return;
+        }
+    }
+
     const item = pendingAudioQueue.shift();
     playAudioInternal(item.audio, item.text, item.speaker);
+    updateBufferStatus();
+}
+
+function updateBufferStatus() {
+    // Show buffer status in UI
+    if (elements.statusText && isConnected) {
+        if (!audioUnlocked) {
+            elements.statusText.textContent = 'Tap to enable audio';
+        } else if (!initialBufferFilled && pendingAudioQueue.length > 0) {
+            elements.statusText.textContent = `Buffering... (${pendingAudioQueue.length}/${MIN_INITIAL_BUFFER})`;
+        } else if (isPlaying) {
+            const queueSize = pendingAudioQueue.length;
+            elements.statusText.textContent = queueSize > 0 ? `LIVE (${queueSize} queued)` : 'LIVE';
+        } else {
+            elements.statusText.textContent = 'LIVE';
+        }
+    }
 }
 
 function showError(message) {
@@ -251,7 +286,10 @@ function playAudio(base64Data, text, speakerName) {
         pendingAudioQueue.shift();
     }
 
-    // If audio is unlocked and not currently playing, start playback
+    // Update buffer status in UI
+    updateBufferStatus();
+
+    // If audio is unlocked and not currently playing, try to start playback
     if (audioUnlocked && !isPlaying) {
         playNextInQueue();
     }
