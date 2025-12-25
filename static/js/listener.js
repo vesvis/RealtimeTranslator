@@ -16,18 +16,21 @@ let isPlaying = false;
 const MIN_INITIAL_BUFFER = 2;
 let initialBufferFilled = false;  // Has initial buffer been filled?
 
-// Debug logging for mobile
+// Debug logging (console only - set DEBUG_MODE = true to show in UI)
+const DEBUG_MODE = false;
+
 function debugLog(message) {
     console.log(message);
-    // Also show in transcript area temporarily for mobile debugging
-    const transcriptEl = document.getElementById('liveTranscriptText');
-    if (transcriptEl && transcriptEl.dataset.debugMode !== 'false') {
-        const time = new Date().toLocaleTimeString();
-        transcriptEl.innerHTML = `<small style="opacity:0.6">[${time}] ${message}</small><br>${transcriptEl.innerHTML}`;
-        // Limit debug messages
-        const lines = transcriptEl.innerHTML.split('<br>');
-        if (lines.length > 8) {
-            transcriptEl.innerHTML = lines.slice(0, 8).join('<br>');
+    // Only show in UI if debug mode is enabled
+    if (DEBUG_MODE) {
+        const transcriptEl = document.getElementById('liveTranscriptText');
+        if (transcriptEl) {
+            const time = new Date().toLocaleTimeString();
+            transcriptEl.innerHTML = `<small style="opacity:0.6">[${time}] ${message}</small><br>${transcriptEl.innerHTML}`;
+            const lines = transcriptEl.innerHTML.split('<br>');
+            if (lines.length > 8) {
+                transcriptEl.innerHTML = lines.slice(0, 8).join('<br>');
+            }
         }
     }
 }

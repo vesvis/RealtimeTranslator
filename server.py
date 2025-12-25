@@ -90,68 +90,44 @@ SPEAKER_VOICES = {
     2: "iP95p4xoKVk53GoZ742B",  # Contributor 2 - Chris voice
 }
 
-# Risale-i Nur domain-specific keywords for Deepgram (no boost, just recognition hints)
-RISALE_KEYWORDS = [
-    # Proper nouns & titles
-    "Bediüzzaman", "Said Nursi", "Risale-i Nur", 
-    "Barla", "Kastamonu", "Emirdağ", "Isparta",
+# ============== Translation Prompts ==============
 
-    # Book titles
-    "Sözler", "Mektubat", "Lemalar", "Şualar",
-    "Mesnevi-i Nuriye", "İşaratü'l-İ'caz", "Asa-yı Musa",
-
-    # Multi-word theological phrases
-    "Mana-yı Harfi", "Mana-yı İsmi",
-    "Vacib-ül Vücud", 
-    "Cenab-ı Hak",
-    "Kadir-i Mutlak", "Alim-i Mutlak",
-    "Esma-i Hüsna",
-    "Alemi Şehadet", "Alemi Gayb", "Alemi Berzah"
-]
-
-# Specialized translation system prompt for Risale-i Nur lectures (Paragraph Mode)
-RISALE_TRANSLATION_PROMPT = """You are an expert simultaneous interpreter for the "Risale-i Nur". You are receiving a complete, buffered block of spoken text.
+# Default fallback prompt if prompts.json is missing
+DEFAULT_TRANSLATION_PROMPT = """You are an expert simultaneous interpreter. Translate the spoken text naturally.
 
 **INPUT DATA:**
-- [CONTEXT]: The previous few sentences (read-only, for continuity).
-- [TARGET_BATCH]: A complete block of recent speech to translate.
+- [CONTEXT]: Previous sentences for continuity.
+- [TARGET_BATCH]: Text to translate.
 
-**CORE INSTRUCTIONS:**
-1. **Wait for the Verb:** You have the full Turkish sentence. Locate the main verb (usually at the end) and construct a grammatically perfect English sentence (SVO structure).
-2. **Smoothing:** The input is spoken text. Remove stuttering, false starts, or self-corrections. Make the English output fluent and clean.
-3. **Tone Strategy:**
-   - **Default:** Formal, dignified, academic (Theology).
-   - **EXCEPTION:** If the text is a direct command or warning (imperative), switch to **Punchy, Idiomatic English** (e.g., use "Come to your senses!" instead of "Take your head among your hands").
+**INSTRUCTIONS:**
+1. Translate meaning naturally, not word-for-word.
+2. Remove stuttering and false starts.
+3. Output each sentence on a NEW LINE for natural pauses.
+4. Use "||" on its own line for major topic shifts.
 
-**CRITICAL: PHONETIC & TERMINOLOGY REPAIR:**
-   - The input contains ASR (Speech-to-Text) errors. You MUST infer the intended word from context.
-   - **Common Phonetic Corrections:**
-     - "Liman" (port) → Correct to **"Lem'a"** (The Flash) when citing books.
-     - "live cil/cillah" → Correct to **"li-vechillâh"** (for the sake of God).
-     - "laan turcusu" → Correct to idiom **"lahana turşusu"** (contradiction).
-     - "Bicrim" → Correct to **"Cirim"** (particle/body).
-   - **Standard Terms:**
-     - Üstad → Üstad
-     - Cenab-ı Hak → Almighty God
-     - Ene → The Ego
-     - Tevhid → Divine Unity
-     - Haşir → Resurrection
-     - Esma-i Hüsna → The Divine Names
-     - Abi / Kardeş → Brother
+**Output:** Provide ONLY the translation with line breaks."""
 
-**OUTPUT FORMAT FOR NATURAL SPEECH:**
-   - Output each distinct sentence on a NEW LINE for natural pauses.
-   - When there is a MAJOR shift (e.g., speaker says "let's continue reading" or transitions from explanation to quotation), insert "||" on its own line to indicate a longer pause.
-   - Example:
-     ```
-     This is the first point.
-     And this explains it further.
-     ||
-     Now let us read from the text.
-     "The truth manifests itself clearly."
-     ```
+def load_prompts():
+    """Load translation prompts from prompts.json"""
+    prompts_file = os.path.join(os.path.dirname(__file__), "prompts.json")
+    try:
+        with open(prompts_file, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        print("Warning: prompts.json not found, using default prompt")
+        return {"default": {"name": "Default", "description": "Default translator", "prompt": DEFAULT_TRANSLATION_PROMPT}}
+    except json.JSONDecodeError as e:
+        print(f"Warning: Error parsing prompts.json: {e}")
+        return {"default": {"name": "Default", "description": "Default translator", "prompt": DEFAULT_TRANSLATION_PROMPT}}
 
-**Output:** Provide ONLY the English translation with line breaks as described."""
+# Load available prompts
+TRANSLATION_PROMPTS = load_prompts()
+
+def get_prompt(prompt_key: str) -> str:
+    """Get a translation prompt by key."""
+    if prompt_key in TRANSLATION_PROMPTS:
+        return TRANSLATION_PROMPTS[prompt_key]["prompt"]
+    return TRANSLATION_PROMPTS.get("default", {}).get("prompt", DEFAULT_TRANSLATION_PROMPT)
 
 # Runtime config (set by interactive menu)
 config = {
@@ -163,7 +139,7 @@ config = {
     "voice_name": "Drew",
     "mic_device_index": None,  # None = default device
     "mic_device_name": "Default",
-    "use_risale_context": True,  # Enable Risale-i Nur specific context
+    "prompt_key": "risale_i_nur",  # Key for selected translation prompt
     "session_id": "LECTURE",  # Custom session ID for persistent listener links
     "main_speaker_name": "Speaker",  # Name displayed for main speaker
 }
@@ -533,17 +509,15 @@ async def translate_text(text: str, history: list = None) -> str:
     global translation_context
     
     try:
-        # Use specialized Risale-i Nur prompt if context is enabled
-        if config.get("use_risale_context", False):
-            system_prompt = RISALE_TRANSLATION_PROMPT
-            # Use structured payload with XML-style context delimiters
-            user_content = construct_payload(
-                history=history or [],
-                current=text
-            )
-        else:
-            system_prompt = f"You are a translator. Translate the following {active_session.source_lang_name} text to {active_session.target_lang_name}. Only output the translation, nothing else."
-            user_content = text
+        # Get the selected translation prompt
+        prompt_key = config.get("prompt_key", "default")
+        system_prompt = get_prompt(prompt_key)
+        
+        # Use structured payload with context delimiters
+        user_content = construct_payload(
+            history=history or [],
+            current=text
+        )
         
         response = await openai_client.chat.completions.create(
             model="gpt-4o-mini",
@@ -1287,6 +1261,31 @@ def interactive_setup() -> None:
     print(f"  Microphone:   {config['mic_device_name']}")
     print(f"  Session ID:   {config['session_id']}")
     print(f"  Main Speaker: {config['main_speaker_name']}")
+    
+    # Translation prompt selection
+    print("\n" + "-" * 50)
+    print("Translation Prompt Profile")
+    prompt_keys = list(TRANSLATION_PROMPTS.keys())
+    prompt_options = [f"{TRANSLATION_PROMPTS[k]['name']} - {TRANSLATION_PROMPTS[k].get('description', '')[:40]}" for k in prompt_keys]
+    print_menu("", prompt_options)
+    
+    # Find default index (risale_i_nur if available, else default)
+    default_prompt_idx = next((i+1 for i, k in enumerate(prompt_keys) if k == "risale_i_nur"), 1)
+    prompt_choice = get_choice("Enter number", len(prompt_keys), default_prompt_idx)
+    config["prompt_key"] = prompt_keys[prompt_choice - 1]
+    print(f"  ✓ Prompt: {TRANSLATION_PROMPTS[config['prompt_key']]['name']}")
+    
+    # Summary
+    print("\n" + "=" * 50)
+    print("   CONFIGURATION SUMMARY")
+    print("=" * 50)
+    print(f"  Source:       {config['source_lang_name']} ({config['source_lang']})")
+    print(f"  Target:       {config['target_lang_name']} ({config['target_lang']})")
+    print(f"  Voice:        {config['voice_name']}")
+    print(f"  Microphone:   {config['mic_device_name']}")
+    print(f"  Session ID:   {config['session_id']}")
+    print(f"  Main Speaker: {config['main_speaker_name']}")
+    print(f"  Prompt:       {TRANSLATION_PROMPTS[config['prompt_key']]['name']}")
     print(f"  Listener URL: http://localhost:8000/listen/{config['session_id']}")
     print("=" * 50)
     
