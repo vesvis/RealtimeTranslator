@@ -22,3 +22,7 @@ pyaudio
 pydub==0.25.1
 numpy==1.26.3
 scipy==1.11.4
+
+# GUI
+PyQt6>=6.6.0
+requests>=2.31.0

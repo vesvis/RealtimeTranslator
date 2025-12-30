@@ -39,6 +39,7 @@ except ImportError:
 from deepgram import DeepgramClient, LiveTranscriptionEvents, LiveOptions
 from openai import AsyncOpenAI
 from elevenlabs.client import ElevenLabs
+from fish_audio_sdk import Session as FishAudioSession, TTSRequest
 
 # Load environment variables
 load_dotenv(override=True)
@@ -82,6 +83,23 @@ BUILTIN_VOICES = [
     ("JBFqnCBsd6RMkjVDRZzb", "George", "Male - British, Warm"),
 ]
 
+# Available OpenAI voices (male first, female at end)
+OPENAI_VOICES = [
+    ("onyx", "Onyx", "Male - Deep, Authoritative"),
+    ("echo", "Echo", "Male - Warm, Soft"),
+    ("fable", "Fable", "Male - British, Expressive"),
+    ("alloy", "Alloy", "Neutral, Versatile"),
+    ("nova", "Nova", "Female - Energetic"),
+    ("shimmer", "Shimmer", "Female - Clear"),
+]
+
+# Available Fish Audio voices (Reference IDs)
+# Users can add more via custom_voices.json
+FISH_AUDIO_VOICES = [
+    ("bf322df2096a46f18c579d0baa36f41d", "Adrian", "A steady narrator"), 
+    ("79d0bd3e4e5444b18f7b6d89b5927bf1", "Jordan", "A motivational speaker"),
+    ("536d3a5e000945adb7038665781a4aca", "Ethan", "A curious explorer"),
+]
 def load_custom_voices():
     """Load custom voices from custom_voices.json if it exists."""
     custom_file = os.path.join(os.path.dirname(__file__), "custom_voices.json")
@@ -101,11 +119,47 @@ VOICES = load_custom_voices() + BUILTIN_VOICES
 
 # Speaker voice mapping for diarization (speaker_id -> voice_id)
 # Names are set dynamically via get_speaker_name()
-SPEAKER_VOICES = {
+
+SPEAKER_VOICES_ELEVENLABS = {
     0: "29vD33N1CtxCmqQRPOHJ",  # Main speaker - Drew voice
     1: "bIHbv24MWmeRgasZH58o",  # Contributor 1 - Will voice
     2: "iP95p4xoKVk53GoZ742B",  # Contributor 2 - Chris voice
 }
+
+SPEAKER_VOICES_OPENAI = {
+    0: "onyx",   # Main
+    1: "fable",  # Contributor 1
+    2: "echo",   # Contributor 2
+}
+
+SPEAKER_VOICES_FISH_AUDIO = {
+    0: "bf322df2096a46f18c579d0baa36f41d",  # Adrian (Main default)
+    1: "79d0bd3e4e5444b18f7b6d89b5927bf1",  # Jordan
+    2: "536d3a5e000945adb7038665781a4aca",  # Ethan
+}
+
+# Available Deepgram TTS voices (Aura-2 models, male first)
+DEEPGRAM_VOICES = [
+    ("aura-2-orion-en", "Orion", "Male - Strong, Confident"),
+    ("aura-2-arcas-en", "Arcas", "Male - Warm, Friendly"),
+    ("aura-2-apollo-en", "Apollo", "Male - Professional"),
+    ("aura-2-zeus-en", "Zeus", "Male - Authoritative"),
+    ("aura-2-orpheus-en", "Orpheus", "Male - Expressive"),
+    ("aura-2-atlas-en", "Atlas", "Male - Deep"),
+    ("aura-2-thalia-en", "Thalia", "Female - Vibrant"),
+    ("aura-2-andromeda-en", "Andromeda", "Female - Warm"),
+    ("aura-2-helena-en", "Helena", "Female - Clear"),
+    ("aura-2-luna-en", "Luna", "Female - Calm"),
+]
+
+SPEAKER_VOICES_DEEPGRAM = {
+    0: "aura-2-orion-en",   # Main - Orion (confident male)
+    1: "aura-2-arcas-en",   # Contributor 1 - Arcas (warm male)
+    2: "aura-2-apollo-en",  # Contributor 2 - Apollo (professional male)
+}
+
+# Current active map (defaults to ElevenLabs)
+SPEAKER_VOICES = SPEAKER_VOICES_ELEVENLABS
 
 # ============== Translation Prompts ==============
 
@@ -113,17 +167,27 @@ SPEAKER_VOICES = {
 DEFAULT_PROMPT = {
     "name": "Default Translator",
     "description": "General-purpose translation with natural speech formatting",
-    "prompt": """You are an expert simultaneous interpreter. Translate the spoken text naturally.
+    "prompt": """You are an expert simultaneous interpreter. Your goal is to produce natural, fluent speech while preserving the speaker's meaning accurately.
 
 **INPUT DATA:**
 - [CONTEXT]: Previous sentences for continuity.
 - [TARGET_BATCH]: Text to translate.
 
+**TRANSLATION APPROACH:**
+- Preserve the speaker's meaning and intent accurately.
+- Favor idiomatic expressions in the target language when they fit naturally.
+- Restructure sentences when needed for clarity, but stay close to the original when it works well.
+- If a phrase sounds awkward literally, find a natural equivalent that keeps the meaning.
+
 **INSTRUCTIONS:**
-1. Translate meaning naturally, not word-for-word.
+1. Translate accurately but naturally - balance faithfulness with fluency.
 2. Remove stuttering and false starts.
 3. Output each sentence on a NEW LINE for natural pauses.
-4. Use "||" on its own line for major topic shifts.
+4. Use "||" on its own line for:
+   - Major topic shifts
+   - When a QUESTION is directed at someone
+   - When a speaker FINISHES their turn and another begins
+   - Transitions between speakers
 
 **Output:** Provide ONLY the translation with line breaks."""
 }
@@ -163,6 +227,10 @@ config = {
     "prompt_key": "risale_i_nur",  # Key for selected translation prompt
     "session_id": "LECTURE",  # Custom session ID for persistent listener links
     "main_speaker_name": "Speaker",  # Name displayed for main speaker
+    "enable_review_pass": False,  # Enable second-pass translation review
+    "translation_model": "gpt-4o-mini",  # Model for translation (gpt-4o or gpt-4o-mini)
+    "tts_service": "elevenlabs",  # Service: elevenlabs, openai, fish_audio, deepgram
+    "tts_speed": 0.8,  # Speech speed (0.7-1.2 for ElevenLabs, 0.25-4.0 for OpenAI)
 }
 
 def get_speaker_name(speaker_id: int) -> str:
@@ -173,14 +241,36 @@ def get_speaker_name(speaker_id: int) -> str:
         return f"Contributor {speaker_id}"
 
 def get_speaker_voice(speaker_id: int) -> str:
-    """Get voice ID for a speaker."""
-    return SPEAKER_VOICES.get(speaker_id, SPEAKER_VOICES[0])
+    """Get voice ID for a speaker based on current service configuration.
+    
+    For main speaker (0), ALWAYS uses the voice explicitly selection in GUI (config['voice_id']).
+    For contributors, uses the predefined per-service mapping.
+    """
+    if speaker_id == 0:
+        # Use the voice selected in config/GUI for main speaker
+        return config.get("voice_id", SPEAKER_VOICES_ELEVENLABS[0])
+    
+    # For contributors, map to the correct service's voice ID
+    service = config.get("tts_service", "elevenlabs")
+    
+    if service == "openai":
+        return SPEAKER_VOICES_OPENAI.get(speaker_id, SPEAKER_VOICES_OPENAI[0])
+        
+    elif service == "fish_audio":
+        return SPEAKER_VOICES_FISH_AUDIO.get(speaker_id, SPEAKER_VOICES_FISH_AUDIO[0])
+    
+    elif service == "deepgram":
+        return SPEAKER_VOICES_DEEPGRAM.get(speaker_id, SPEAKER_VOICES_DEEPGRAM[0])
+        
+    # Default / ElevenLabs
+    return SPEAKER_VOICES_ELEVENLABS.get(speaker_id, SPEAKER_VOICES_ELEVENLABS[0])
 
 # ============== API Clients ==============
 
 deepgram_key = os.getenv("DEEPGRAM_API_KEY")
 openai_key = os.getenv("OPENAI_API_KEY")
 elevenlabs_key = os.getenv("ELEVENLABS_API_KEY")
+fish_audio_key = os.getenv("FISH_AUDIO_API_KEY")
 
 # Validate API keys
 def check_api_keys():
@@ -200,6 +290,7 @@ def check_api_keys():
 deepgram_client = DeepgramClient(deepgram_key or "dummy_key")
 openai_client = AsyncOpenAI(api_key=openai_key or "dummy_key")
 elevenlabs_client = ElevenLabs(api_key=elevenlabs_key or "dummy_key")
+# Fish Audio session is created per-request to handle async context properly
 
 # ============== FastAPI App ==============
 
@@ -260,81 +351,134 @@ producer = ProducerState()
 
 
 class TranslationBuffer:
-    """Smart buffer for accumulated sentence-boundary translation.
+    """Sentence-based translation buffer.
     
-    Accumulates text until detecting a complete thought based on:
-    - Semantic: Ends with strong punctuation AND >= min_words
-    - Timeout: Buffer held > timeout_seconds (prevents stalling)
+    Collects complete sentences (ending with . ? !) and batches them for translation.
+    Short sentences (< batch_threshold words) are batched together.
+    Uses timeout as fallback to prevent stalling.
     """
     
-    def __init__(self, timeout_seconds: float = 15.0, min_words: int = 15):
-        self.buffer = ""
+    def __init__(self, timeout_seconds: float = 8.0, batch_threshold: int = 10):
+        self.pending_text = ""  # Incomplete text waiting for sentence end
+        self.sentence_queue = []  # List of complete sentences ready for batching
         self.last_flush_time = time.time()
-        self.history = []  # Last 3 sentences for context (original Turkish)
+        self.history = []  # Last 5 segments for context
         self.timeout_seconds = timeout_seconds
-        self.min_words = min_words
-        self.current_speaker = 0  # Track speaker for the buffered content
+        self.batch_threshold = batch_threshold  # Min words to translate alone
+        self.current_speaker = 0
     
     def add_segment(self, text: str, speaker_id: int = 0):
-        """Append incoming ASR text to buffer."""
-        self.buffer = (self.buffer + " " + text).strip()
+        """Add incoming ASR text, extracting complete sentences."""
+        self.pending_text = (self.pending_text + " " + text).strip()
         self.current_speaker = speaker_id
+        
+        # Extract complete sentences from pending text
+        self._extract_sentences()
+    
+    def _extract_sentences(self):
+        """Extract complete sentences from pending_text into sentence_queue."""
+        import re
+        
+        # Pattern: Match sentences ending with . ? ! followed by space or end
+        # Keep the punctuation with the sentence
+        pattern = r'([^.!?]*[.!?])(?:\s+|$)'
+        
+        while True:
+            match = re.match(pattern, self.pending_text)
+            if not match:
+                break
+            
+            sentence = match.group(1).strip()
+            if sentence:
+                self.sentence_queue.append(sentence)
+            
+            # Remove matched sentence from pending
+            self.pending_text = self.pending_text[match.end():].strip()
     
     def should_flush(self) -> bool:
-        """Check if buffer should be flushed for translation."""
-        if not self.buffer.strip():
+        """Check if we should flush for translation."""
+        if not self.sentence_queue and not self.pending_text.strip():
             return False
         
-        # Condition A: Semantic - strong punctuation AND long enough
-        has_punctuation = self.buffer.strip().endswith(('.', '?', '!'))
-        word_count = len(self.buffer.split())
-        is_long_enough = word_count >= self.min_words
+        # Check if we have enough content in the queue
+        if self.sentence_queue:
+            total_words = sum(len(s.split()) for s in self.sentence_queue)
+            
+            # If we have enough words, flush
+            if total_words >= self.batch_threshold:
+                return True
+            
+            # If we have multiple sentences, batch them
+            if len(self.sentence_queue) >= 2:
+                return True
         
-        # Condition B: Timeout - prevents stalling
+        # Timeout fallback - flush whatever we have
         time_elapsed = time.time() - self.last_flush_time
-        is_timeout = time_elapsed > self.timeout_seconds
+        if time_elapsed > self.timeout_seconds:
+            # Either sentences in queue or pending text
+            return bool(self.sentence_queue) or bool(self.pending_text.strip())
         
-        return (has_punctuation and is_long_enough) or is_timeout
+        return False
     
     def get_buffer_content(self) -> str:
-        """Get current buffer content without flushing."""
-        return self.buffer.strip()
+        """Get current buffer content (for display)."""
+        queued = " ".join(self.sentence_queue)
+        if self.pending_text:
+            return f"{queued} {self.pending_text}".strip()
+        return queued
     
     def get_word_count(self) -> int:
-        """Get current word count in buffer."""
-        return len(self.buffer.split()) if self.buffer else 0
+        """Get total word count in buffer."""
+        content = self.get_buffer_content()
+        return len(content.split()) if content else 0
     
     def get_time_elapsed(self) -> float:
         """Get seconds since last flush."""
         return time.time() - self.last_flush_time
     
+    def get_sentence_count(self) -> int:
+        """Get number of complete sentences in queue."""
+        return len(self.sentence_queue)
+    
     def flush(self) -> tuple:
-        """Get buffer content and history for translation.
+        """Flush sentences for translation.
         
         Returns:
             tuple: (content, speaker_id, history)
         """
-        content = self.buffer.strip()
+        # Combine queued sentences
+        if self.sentence_queue:
+            content = " ".join(self.sentence_queue)
+            self.sentence_queue = []
+        elif self.pending_text.strip():
+            # Timeout case: flush incomplete text
+            content = self.pending_text.strip()
+            self.pending_text = ""
+        else:
+            content = ""
+        
         history = self.history.copy()
         speaker_id = self.current_speaker
         
-        # Move original text to history for context
+        # Add to history for context
         if content:
             self.history.append(content)
-            if len(self.history) > 3:  # Keep last 3 sentences
+            if len(self.history) > 5:
                 self.history.pop(0)
         
-        self.buffer = ""
         self.last_flush_time = time.time()
         return content, speaker_id, history
     
     def has_pending(self) -> bool:
-        """Check if there is any pending text in buffer."""
-        return bool(self.buffer.strip())
+        """Check if there is any pending content."""
+        return bool(self.sentence_queue) or bool(self.pending_text.strip())
     
     def pending_count(self) -> int:
-        """Get approximate 'count' - here just 1 if has content, 0 otherwise."""
-        return 1 if self.buffer.strip() else 0
+        """Get count of pending sentences."""
+        count = len(self.sentence_queue)
+        if self.pending_text.strip():
+            count += 1
+        return count
 
 # ============== Recording Manager ==============
 
@@ -532,7 +676,22 @@ async def translate_text(text: str, history: list = None) -> str:
     try:
         # Get the selected translation prompt
         prompt_key = config.get("prompt_key", "default")
-        system_prompt = get_prompt(prompt_key)
+        base_prompt = get_prompt(prompt_key)
+        
+        # CRITICAL: Inject source and target language into the prompt
+        source_lang = config.get("source_lang_name", "English")
+        target_lang = config.get("target_lang_name", "Turkish")
+        
+        # Prepend AND append language direction to ensure it overrides any hardcoded language in custom prompts
+        language_prefix = f"""**TRANSLATION DIRECTION:** {source_lang} → {target_lang}
+You MUST translate from {source_lang} into {target_lang}. IGNORE any conflicting language instructions below.
+
+"""
+        language_suffix = f"""
+
+**CRITICAL OVERRIDE:** Output ONLY in {target_lang}. Do NOT output in English or any other language unless {target_lang} IS English.
+"""
+        system_prompt = language_prefix + base_prompt + language_suffix
         
         # Use structured payload with context delimiters
         user_content = construct_payload(
@@ -541,7 +700,7 @@ async def translate_text(text: str, history: list = None) -> str:
         )
         
         response = await openai_client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=config.get("translation_model", "gpt-4o-mini"),
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_content}
@@ -552,6 +711,10 @@ async def translate_text(text: str, history: list = None) -> str:
         
         translation = response.choices[0].message.content.strip()
         
+        # Optional: Run translation review/polish pass with context history
+        if config.get("enable_review_pass", False):
+            translation = await polish_translation(text, translation, translation_context)
+        
         # Add to context buffer (limit size) for backward compatibility
         translation_context.append((text, translation))
         if len(translation_context) > CONTEXT_BUFFER_SIZE:
@@ -561,6 +724,103 @@ async def translate_text(text: str, history: list = None) -> str:
     except Exception as e:
         print(f"Translation error: {e}")
         return "[Translation error]"
+
+
+# Translation review/polish prompt - includes theological context for Risale-i Nur translations
+def get_review_prompt(source_lang: str, target_lang: str) -> str:
+    """Build the review prompt with dynamic source/target languages."""
+    return f"""You are a translation quality reviewer specializing in Islamic theological texts, particularly Risale-i Nur (Said Nursi's works).
+
+**TRANSLATION DIRECTION:** {source_lang} → {target_lang}
+
+**DOMAIN CONTEXT:**
+This is a live interpretation of a lecture on Risale-i Nur. Key theological terms that MUST be preserved or correctly rendered:
+- "Risale-i Nur" / "Risale" → Keep as-is or "Epistles of Light"
+- "Üstad" / "Bediüzzaman" → "Master Nursi" or "Bediuzzaman Said Nursi"
+- "iman" → "faith" or "belief" (never "religion")
+- "hakikat" → "reality" or "truth" (spiritual sense)
+- "marifetullah" → "knowledge of God" or "divine knowledge"
+- "tevhid" → "divine unity" or "oneness of God"
+- "tefekkür" → "contemplation" or "reflection"
+- "tafsilat" → "detailed exposition" or "elaboration"
+- "mana-i harfi" → "indicative meaning" (pointing to Creator)
+- "mana-i ismi" → "nominative meaning" (thing in itself)
+- "nur" → "light" (divine/spiritual light)
+- "zulmet" → "darkness" (spiritual darkness)
+
+**RULES:**
+1. If the translation is already natural and accurate, output it UNCHANGED.
+2. If the translation sounds awkward, too literal, or has grammar issues, IMPROVE it.
+3. PRESERVE all line breaks exactly as they are (they indicate pauses).
+4. PRESERVE all "||" markers exactly as they are (they indicate longer pauses).
+5. Ensure theological terms are rendered correctly per the domain context above.
+6. Keep the meaning faithful to the source - only improve {target_lang} expression.
+7. Use the previous translations for context continuity.
+8. Do NOT add explanations - output ONLY the translation in {target_lang}.
+{{history_section}}
+**Original ({source_lang} source):**
+{{original}}
+
+**Translation to review:**
+{{translation}}
+
+**Output:** The polished translation in {target_lang} (improved if needed, unchanged if already good). Preserve all line breaks and || markers."""
+
+
+def construct_history_section(history: list, source_lang: str, target_lang: str) -> str:
+    """Build the history section for the review prompt."""
+    if not history:
+        return ""
+    
+    lines = ["\n**PREVIOUS TRANSLATIONS (for context continuity):**"]
+    for orig, trans in history[-3:]:  # Last 3 for context
+        lines.append(f"- {source_lang}: {orig[:100]}{'...' if len(orig) > 100 else ''}")
+        lines.append(f"  {target_lang}: {trans[:100]}{'...' if len(trans) > 100 else ''}")
+    lines.append("")
+    return "\n".join(lines)
+
+
+async def polish_translation(original: str, translation: str, history: list = None) -> str:
+    """Optional second pass to review and polish the translation with theological context.
+    
+    Args:
+        original: The original source text
+        translation: The first-pass translation
+        history: Optional list of (original, translation) tuples for context
+    """
+    try:
+        # Get languages from config
+        source_lang = config.get("source_lang_name", "English")
+        target_lang = config.get("target_lang_name", "Turkish")
+        
+        history_section = construct_history_section(history or [], source_lang, target_lang)
+        
+        # Build the review prompt with dynamic languages
+        review_prompt = get_review_prompt(source_lang, target_lang)
+        
+        response = await openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "user", "content": review_prompt.format(
+                    original=original,
+                    translation=translation,
+                    history_section=history_section
+                )}
+            ],
+            temperature=0.2,
+            max_tokens=500
+        )
+        
+        polished = response.choices[0].message.content.strip()
+        
+        # If the model returned something, use it; otherwise keep original
+        if polished and len(polished) > 5:
+            return polished
+        return translation
+        
+    except Exception as e:
+        print(f"Review pass error (using original): {e}")
+        return translation
 
 def format_text_for_tts(text: str) -> str:
     """Format translation text for natural TTS with SSML breaks.
@@ -584,7 +844,9 @@ def format_text_for_tts(text: str) -> str:
 
 
 async def generate_speech(text: str, speaker_id: int = 0) -> Optional[bytes]:
-    """Generate speech using ElevenLabs with speaker-specific voice"""
+    """Generate speech using ElevenLabs with speaker-specific voice.
+       Falls back to OpenAI TTS if ElevenLabs quota is exceeded.
+    """
     try:
         # Get voice based on speaker ID (for diarization)
         voice_id = get_speaker_voice(speaker_id)
@@ -592,6 +854,8 @@ async def generate_speech(text: str, speaker_id: int = 0) -> Optional[bytes]:
         # Format text with SSML breaks for natural pauses
         formatted_text = format_text_for_tts(text)
         
+        # Note: This blocks until the stream begins; ran in thread via fastapi usually but here we await
+        # For now keeping as is since it was working before quota error
         audio = elevenlabs_client.generate(
             text=formatted_text,
             voice=voice_id,
@@ -605,7 +869,167 @@ async def generate_speech(text: str, speaker_id: int = 0) -> Optional[bytes]:
         
         return audio_bytes
     except Exception as e:
-        print(f"TTS Error: {e}")
+        error_msg = str(e).lower()
+        if "quota_exceeded" in error_msg or "status_code: 401" in error_msg or "401" in error_msg:
+            print(f"⚠️ ElevenLabs Quota Exceeded. Switching to OpenAI TTS fallback.")
+            try:
+                # Map speaker to OpenAI voice
+                # Drew (Main) -> onyx (Deep, authoritative)
+                # Will (Contrib 1) -> alloy (Neutral)
+                # Chris (Contrib 2) -> echo (Warm)
+                openai_voice = "alloy"
+                if speaker_id == 0:
+                    openai_voice = "onyx" 
+                elif speaker_id == 2:
+                    openai_voice = "echo"
+                
+                # Prepare text for OpenAI (replace || with ellipsis, no SSML)
+                import re
+                # Replace || markers with ellipsis for pause
+                clean_text = re.sub(r'\s*\|\|\s*', '... ', text)
+                # Remove any potential HTML/XML tags just in case
+                clean_text = re.sub(r'<[^>]+>', '', clean_text)
+                
+                response = await openai_client.audio.speech.create(
+                    model="tts-1",
+                    voice=openai_voice,
+                    input=clean_text
+                )
+                return response.content
+            except Exception as e2:
+                print(f"Fallback TTS error: {e2}")
+                return None
+        print(f"ElevenLabs TTS Error: {e}")
+        return None
+
+async def generate_openai_audio(text: str, voice_id: str) -> Optional[bytes]:
+    """Generate speech using OpenAI TTS."""
+    try:
+        # Simple cleanup for OpenAI
+        clean_text = text.replace("||", "... ")
+        
+        response = await openai_client.audio.speech.create(
+            model="tts-1",
+            voice=voice_id,
+            input=clean_text
+        )
+        return response.content
+    except Exception as e:
+        print(f"OpenAI TTS Error: {e}")
+        return None
+
+async def generate_fish_audio(text: str, voice_id: str) -> Optional[bytes]:
+    """Generate speech using Fish Audio."""
+    try:
+        from fishaudio import FishAudio
+        
+        key = os.getenv("FISH_AUDIO_API_KEY") or "dummy_key"
+        client = FishAudio(api_key=key)
+        
+        # Use stream and collect for full audio
+        audio = client.tts.stream(
+            text=text,
+            reference_id=voice_id
+        ).collect()
+        
+        return audio
+        
+    except ImportError:
+        # Fall back to old SDK if new one not available
+        try:
+            key = os.getenv("FISH_AUDIO_API_KEY") or "dummy_key"
+            
+            # Try synchronous approach with old SDK
+            from fish_audio_sdk import Session as FishSession
+            
+            session = FishSession(key)
+            audio_bytes = b""
+            for chunk in session.tts(TTSRequest(text=text, reference_id=voice_id)):
+                audio_bytes += chunk
+            return audio_bytes
+        except Exception as e2:
+            print(f"Fish Audio TTS Error (fallback): {e2}")
+            return None
+    except Exception as e:
+        print(f"Fish Audio TTS Error: {e}")
+        return None
+
+async def generate_deepgram_audio(text: str, voice_id: str) -> Optional[bytes]:
+    """Generate speech using Deepgram TTS (Aura-2)."""
+    try:
+        from deepgram import SpeakOptions
+        
+        # Configure TTS options
+        options = SpeakOptions(
+            model=voice_id,
+            encoding="mp3"
+        )
+        
+        # Use stream() to get audio as BytesIO
+        response = deepgram_client.speak.rest.v("1").stream(
+            source={"text": text},
+            options=options
+        )
+        
+        # Get the audio bytes from the BytesIO stream
+        audio_data = response.stream.getvalue()
+        return audio_data
+        
+    except Exception as e:
+        print(f"Deepgram TTS Error: {e}")
+        return None
+
+async def generate_speech(text: str, speaker_id: int = 0) -> Optional[bytes]:
+    """Generate speech using the configured service."""
+    service = config.get("tts_service", "elevenlabs")
+    
+    # Get voice based on speaker ID (for diarization)
+    voice_id = get_speaker_voice(speaker_id)
+    
+    # Format text with SSML breaks for natural pauses (applies mostly to EL)
+    # Start with standard formatting
+    formatted_text = format_text_for_tts(text)
+    
+    try:
+        if service == "elevenlabs":
+            from elevenlabs import VoiceSettings
+            
+            # Get speed from config and clamp to valid range (0.7-1.2)
+            speed = config.get("tts_speed", 1.0)
+            speed = max(0.7, min(1.2, speed))
+            
+            # ElevenLabs returns a generator - must collect all chunks
+            audio_generator = elevenlabs_client.generate(
+                text=formatted_text,
+                voice=voice_id,
+                model="eleven_turbo_v2",
+                voice_settings=VoiceSettings(
+                    stability=0.5,
+                    similarity_boost=0.75,
+                    speed=speed
+                )
+            )
+            # Collect audio chunks into bytes
+            audio_bytes = b""
+            for chunk in audio_generator:
+                audio_bytes += chunk
+            return audio_bytes
+            
+        elif service == "openai":
+            return await generate_openai_audio(text, voice_id)
+            
+        elif service == "fish_audio":
+            return await generate_fish_audio(text, voice_id)
+        
+        elif service == "deepgram":
+            return await generate_deepgram_audio(text, voice_id)
+            
+        else:
+            print(f"Unknown TTS service: {service}")
+            return None
+            
+    except Exception as e:
+        print(f"TTS Error ({service}): {e}")
         return None
 
 async def broadcast_to_listeners(message: dict):
@@ -1043,6 +1467,170 @@ async def get_session(session_id: str):
         raise HTTPException(status_code=404, detail="Session not found")
     return active_session.to_dict()
 
+# ============== GUI Control API Routes ==============
+
+@app.get("/api/config")
+async def get_config():
+    """Get current configuration"""
+    return {
+        "source_lang": config["source_lang"],
+        "source_lang_name": config["source_lang_name"],
+        "target_lang": config["target_lang"],
+        "target_lang_name": config["target_lang_name"],
+        "voice_id": config["voice_id"],
+        "voice_name": config["voice_name"],
+        "mic_device_index": config["mic_device_index"],
+        "mic_device_name": config["mic_device_name"],
+        "session_id": config["session_id"],
+        "main_speaker_name": config["main_speaker_name"],
+        "prompt_key": config["prompt_key"],
+        "enable_review_pass": config["enable_review_pass"],
+        "translation_model": config.get("translation_model", "gpt-4o-mini"),
+    }
+
+@app.post("/api/config")
+async def update_config(new_config: dict):
+    """Update configuration (only when producer is stopped)"""
+    if producer.is_running:
+        raise HTTPException(status_code=400, detail="Cannot update config while server is running")
+    
+    # Update allowed fields
+    allowed_fields = [
+        "source_lang", "source_lang_name", "target_lang", "target_lang_name",
+        "voice_id", "voice_name", "mic_device_index", "mic_device_name",
+        "session_id", "main_speaker_name", "prompt_key", "enable_review_pass",
+        "translation_model"
+    ]
+    
+    for field in allowed_fields:
+        if field in new_config:
+            config[field] = new_config[field]
+    
+    return {"message": "Configuration updated", "config": config}
+
+@app.post("/api/config/live")
+async def update_config_live(new_config: dict):
+    """Update configuration WHILE running (only safe fields).
+    
+    Fields that can be changed live:
+    - voice_id, voice_name: Change TTS voice
+    - enable_review_pass: Toggle second-pass review
+    - translation_model: Switch between gpt-4o and gpt-4o-mini
+    - main_speaker_name: Change speaker display name
+    """
+    # Fields safe to change while running
+    live_changeable = ["voice_id", "voice_name", "enable_review_pass", "translation_model", "main_speaker_name", "tts_service", "tts_speed"]
+    
+    changed = []
+    for field in live_changeable:
+        if field in new_config and new_config[field] != config.get(field):
+            old_val = config.get(field)
+            config[field] = new_config[field]
+            changed.append(f"{field}: {old_val} → {new_config[field]}")
+            print(f"⚡ Live config change: {field} = {new_config[field]}")
+    
+    if changed:
+        return {"message": "Live configuration updated", "changes": changed}
+    return {"message": "No changes made"}
+
+@app.get("/api/producer/status")
+async def get_producer_status():
+    """Get producer status"""
+    return {
+        "is_running": producer.is_running,
+        "connection_healthy": producer.connection_healthy,
+        "is_reconnecting": producer.is_reconnecting,
+        "buffer_pending": producer.translation_buffer.pending_count() if producer.translation_buffer else 0,
+        "session_id": active_session.id if active_session else None,
+        "listener_count": len(active_session.listener_ws_set) if active_session else 0,
+    }
+
+@app.post("/api/producer/start")
+async def api_start_producer():
+    """Start the producer"""
+    global active_session
+    
+    if producer.is_running:
+        return {"message": "Producer already running"}
+    
+    # Create session if not exists
+    if not active_session:
+        session_id = config["session_id"].upper()
+        active_session = Session(
+            id=session_id,
+            source_lang=config["source_lang"],
+            target_lang=config["target_lang"],
+            source_lang_name=config["source_lang_name"],
+            target_lang_name=config["target_lang_name"],
+            voice_id=config["voice_id"]
+        )
+    
+    # Store event loop
+    producer.loop = asyncio.get_running_loop()
+    
+    # Start producer
+    start_producer()
+    
+    # Start buffer timeout checker
+    producer.buffer_timeout_task = asyncio.create_task(buffer_timeout_checker())
+    
+    return {"message": "Producer started", "session_id": active_session.id}
+
+@app.post("/api/producer/stop")
+async def api_stop_producer():
+    """Stop the producer"""
+    if not producer.is_running:
+        return {"message": "Producer not running"}
+    
+    # Cancel buffer timeout task
+    if producer.buffer_timeout_task:
+        producer.buffer_timeout_task.cancel()
+        try:
+            await producer.buffer_timeout_task
+        except asyncio.CancelledError:
+            pass
+    
+    stop_producer()
+    
+    return {"message": "Producer stopped"}
+
+@app.get("/api/languages")
+async def get_languages():
+    """Get available languages"""
+    return {"languages": [{"code": c, "name": n} for c, n, _ in LANGUAGES]}
+
+@app.get("/api/voices")
+async def get_voices():
+    """Get available voices"""
+    return {"voices": [{"id": vid, "name": name, "description": desc} for vid, name, desc in VOICES]}
+
+@app.get("/api/prompts")
+async def get_prompts():
+    """Get available translation prompts"""
+    return {
+        "prompts": [
+            {"key": k, "name": v.get("name", k), "description": v.get("description", "")}
+            for k, v in TRANSLATION_PROMPTS.items()
+        ]
+    }
+
+@app.get("/api/microphones")
+async def get_microphones():
+    """Get available microphones"""
+    p = pyaudio.PyAudio()
+    devices = []
+    
+    for i in range(p.get_device_count()):
+        info = p.get_device_info_by_index(i)
+        if info.get('maxInputChannels', 0) > 0:
+            devices.append({
+                "index": i,
+                "name": info.get('name', f'Device {i}')
+            })
+    
+    p.terminate()
+    return {"microphones": devices}
+
 # ============== WebSocket Routes ==============
 
 @app.websocket("/ws/listener/{session_id}")
@@ -1316,19 +1904,31 @@ def interactive_setup() -> None:
 
 if __name__ == "__main__":
     import uvicorn
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="Realtime Translator Server")
+    parser.add_argument("--no-setup", action="store_true", 
+                        help="Skip interactive setup (for GUI mode)")
+    parser.add_argument("--host", default="0.0.0.0", help="Host to bind to")
+    parser.add_argument("--port", type=int, default=8000, help="Port to bind to")
+    args = parser.parse_args()
     
     print("\n🎙️  REALTIME TRANSLATOR")
     print("   Speak → Transcribe → Translate → TTS → Broadcast")
     
-    # Run interactive setup
-    interactive_setup()
+    if not args.no_setup:
+        # Run interactive setup for console mode
+        interactive_setup()
+    else:
+        print("\n   Running in headless mode (configuration via API/GUI)")
     
     print("\nStarting server...")
     
     uvicorn.run(
         app,
-        host="0.0.0.0",
-        port=8000,
+        host=args.host,
+        port=args.port,
         ws_ping_interval=30,
         ws_ping_timeout=60
     )
+
