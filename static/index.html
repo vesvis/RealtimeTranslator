@@ -3,167 +3,316 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Realtime Translator - Live Voice Translation</title>
-    <link rel="stylesheet" href="/static/css/styles.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <title>Realtime Translator</title>
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#6366f1">
+    <meta name="description" content="Real-time speech translation. Host broadcasts or personal use.">
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #0a0a12;
+            --bg-secondary: #12121f;
+            --bg-card: rgba(25, 25, 45, 0.7);
+            --accent-purple: #6366f1;
+            --accent-violet: #8b5cf6;
+            --accent-pink: #ec4899;
+            --text-primary: #f3f4f6;
+            --text-secondary: #9ca3af;
+            --text-muted: #6b7280;
+            --border-subtle: rgba(99, 102, 241, 0.2);
+            --glow-purple: rgba(99, 102, 241, 0.4);
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 50%, #1a1a2e 100%);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            overflow-x: hidden;
+        }
+
+        /* Animated background orbs */
+        .bg-orb {
+            position: fixed;
+            border-radius: 50%;
+            filter: blur(80px);
+            opacity: 0.5;
+            pointer-events: none;
+            z-index: 0;
+        }
+        .bg-orb-1 {
+            width: 400px;
+            height: 400px;
+            background: var(--accent-purple);
+            top: -100px;
+            right: -100px;
+            animation: float 8s ease-in-out infinite;
+        }
+        .bg-orb-2 {
+            width: 300px;
+            height: 300px;
+            background: var(--accent-violet);
+            bottom: -50px;
+            left: -50px;
+            animation: float 10s ease-in-out infinite reverse;
+        }
+        @keyframes float {
+            0%, 100% { transform: translate(0, 0); }
+            50% { transform: translate(30px, -30px); }
+        }
+
+        .container {
+            position: relative;
+            z-index: 1;
+            max-width: 900px;
+            width: 100%;
+            text-align: center;
+        }
+
+        /* Header */
+        .header {
+            margin-bottom: 60px;
+        }
+        .logo {
+            font-size: 3rem;
+            margin-bottom: 16px;
+        }
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, var(--text-primary) 0%, var(--accent-purple) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 12px;
+            letter-spacing: -0.02em;
+        }
+        .tagline {
+            font-size: 1.1rem;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        /* Mode Cards */
+        .mode-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 24px;
+            margin-bottom: 40px;
+        }
+
+        .mode-card {
+            background: var(--bg-card);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--border-subtle);
+            border-radius: 24px;
+            padding: 40px 32px;
+            text-decoration: none;
+            color: inherit;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        .mode-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, var(--accent-purple), var(--accent-violet), var(--accent-pink));
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .mode-card:hover {
+            transform: translateY(-4px);
+            border-color: var(--accent-purple);
+            box-shadow: 0 20px 40px rgba(99, 102, 241, 0.2);
+        }
+        .mode-card:hover::before {
+            opacity: 1;
+        }
+
+        .mode-icon {
+            font-size: 3.5rem;
+            margin-bottom: 20px;
+            display: block;
+        }
+        .mode-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 12px;
+            color: var(--text-primary);
+        }
+        .mode-description {
+            font-size: 0.95rem;
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+
+        .mode-badge {
+            display: inline-block;
+            margin-top: 20px;
+            padding: 6px 14px;
+            background: rgba(99, 102, 241, 0.15);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--accent-purple);
+        }
+
+        /* Settings Link */
+        .settings-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 0.95rem;
+            font-weight: 500;
+            padding: 12px 24px;
+            border-radius: 12px;
+            transition: all 0.2s ease;
+        }
+        .settings-link:hover {
+            color: var(--text-primary);
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        /* Footer */
+        .footer {
+            margin-top: 60px;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+        }
+        .footer a {
+            color: var(--accent-purple);
+            text-decoration: none;
+        }
+        .footer a:hover {
+            text-decoration: underline;
+        }
+
+        /* Mobile adjustments */
+        @media (max-width: 640px) {
+            .logo { font-size: 2.5rem; }
+            h1 { font-size: 1.8rem; }
+            .tagline { font-size: 1rem; }
+            .mode-cards { gap: 16px; }
+            .mode-card { padding: 32px 24px; }
+            .mode-icon { font-size: 3rem; }
+            .mode-title { font-size: 1.3rem; }
+        }
+
+        /* API Key Warning Banner */
+        .api-warning {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 12px;
+            padding: 16px 20px;
+            margin-bottom: 32px;
+            display: none;
+        }
+        .api-warning.show {
+            display: block;
+        }
+        .api-warning-text {
+            color: #fca5a5;
+            font-size: 0.9rem;
+        }
+        .api-warning a {
+            color: #f87171;
+            font-weight: 600;
+        }
+    </style>
 </head>
 <body>
-    <div class="landing-container">
-        <!-- Animated background -->
-        <div class="bg-gradient"></div>
-        <div class="bg-particles"></div>
-        
+    <!-- Animated background -->
+    <div class="bg-orb bg-orb-1"></div>
+    <div class="bg-orb bg-orb-2"></div>
+
+    <div class="container">
         <!-- Header -->
-        <header class="landing-header">
-            <div class="logo">
-                <span class="logo-icon">🌐</span>
-                <span class="logo-text">Realtime Translator</span>
-            </div>
+        <header class="header">
+            <div class="logo">🎙️</div>
+            <h1>Realtime Translator</h1>
+            <p class="tagline">Speak → Transcribe → Translate → Listen</p>
         </header>
-        
-        <!-- Hero Section -->
-        <main class="hero">
-            <div class="hero-content">
-                <h1 class="hero-title">
-                    <span class="gradient-text">Live Voice Translation</span>
-                    <br>with Voice Cloning
-                </h1>
-                <p class="hero-subtitle">
-                    Speak in your language. Your audience hears it in theirs — 
-                    <em>in your own voice</em>.
-                </p>
-                
-                <div class="hero-features">
-                    <div class="feature">
-                        <span class="feature-icon">🎤</span>
-                        <span>Real-time Speech Recognition</span>
-                    </div>
-                    <div class="feature">
-                        <span class="feature-icon">🔄</span>
-                        <span>Instant Translation</span>
-                    </div>
-                    <div class="feature">
-                        <span class="feature-icon">🗣️</span>
-                        <span>Voice Cloning Technology</span>
-                    </div>
-                </div>
-                
-                <div class="hero-actions">
-                    <a href="/producer" class="btn btn-primary btn-large">
-                        <span class="btn-icon">🎙️</span>
-                        Start as Speaker
-                    </a>
-                    <button class="btn btn-secondary btn-large" onclick="showJoinModal()">
-                        <span class="btn-icon">🎧</span>
-                        Join as Listener
-                    </button>
-                </div>
-            </div>
-            
-            <!-- Visual illustration -->
-            <div class="hero-visual">
-                <div class="translation-demo">
-                    <div class="demo-bubble speaker">
-                        <div class="bubble-label">Speaker (English)</div>
-                        <div class="bubble-text">"Hello, welcome to our event!"</div>
-                        <div class="sound-waves">
-                            <span></span><span></span><span></span><span></span><span></span>
-                        </div>
-                    </div>
-                    <div class="demo-arrow">
-                        <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
-                            <path d="M5 20H35M35 20L25 10M35 20L25 30" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
-                    </div>
-                    <div class="demo-bubble listener">
-                        <div class="bubble-label">Listener (Spanish)</div>
-                        <div class="bubble-text">"¡Hola, bienvenidos a nuestro evento!"</div>
-                        <div class="sound-waves">
-                            <span></span><span></span><span></span><span></span><span></span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </main>
-        
-        <!-- How it works -->
-        <section class="how-it-works">
-            <h2>How It Works</h2>
-            <div class="steps">
-                <div class="step">
-                    <div class="step-number">1</div>
-                    <div class="step-content">
-                        <h3>Record Voice Sample</h3>
-                        <p>Speak for 30 seconds to clone your voice</p>
-                    </div>
-                </div>
-                <div class="step">
-                    <div class="step-number">2</div>
-                    <div class="step-content">
-                        <h3>Share Session Link</h3>
-                        <p>Give listeners a simple code to join</p>
-                    </div>
-                </div>
-                <div class="step">
-                    <div class="step-number">3</div>
-                    <div class="step-content">
-                        <h3>Start Speaking</h3>
-                        <p>Your words are translated in real-time</p>
-                    </div>
-                </div>
-            </div>
-        </section>
-        
-        <!-- Join Modal -->
-        <div id="joinModal" class="modal">
-            <div class="modal-content">
-                <button class="modal-close" onclick="hideJoinModal()">&times;</button>
-                <h2>Join a Session</h2>
-                <p>Enter the session code shared by the speaker</p>
-                <form onsubmit="joinSession(event)">
-                    <input 
-                        type="text" 
-                        id="sessionCode" 
-                        class="input-large"
-                        placeholder="Enter code (e.g., ABC-123)"
-                        pattern="[A-Za-z0-9\-]+"
-                        required
-                        autocomplete="off"
-                    >
-                    <button type="submit" class="btn btn-primary btn-large btn-full">
-                        Join Session
-                    </button>
-                </form>
-            </div>
+
+        <!-- API Key Warning -->
+        <div class="api-warning" id="apiWarning">
+            <p class="api-warning-text">
+                ⚠️ API keys not configured. <a href="/settings">Set up your keys</a> to get started.
+            </p>
         </div>
+
+        <!-- Mode Selection Cards -->
+        <div class="mode-cards">
+            <a href="/host" class="mode-card">
+                <span class="mode-icon">🎙️</span>
+                <h2 class="mode-title">Host Mode</h2>
+                <p class="mode-description">
+                    Broadcast your translated voice to an audience. 
+                    Perfect for lectures, presentations, and live events.
+                </p>
+                <span class="mode-badge">Multiple Listeners</span>
+            </a>
+
+            <a href="/personal" class="mode-card">
+                <span class="mode-icon">🎧</span>
+                <h2 class="mode-title">Personal Mode</h2>
+                <p class="mode-description">
+                    Point your phone at a speaker and hear real-time 
+                    translation through your earbuds. Just for you.
+                </p>
+                <span class="mode-badge">Private Use</span>
+            </a>
+        </div>
+
+        <!-- Settings Link -->
+        <a href="/settings" class="settings-link">
+            ⚙️ Settings & API Keys
+        </a>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>Powered by Deepgram, OpenAI & ElevenLabs</p>
+        </footer>
     </div>
-    
+
     <script>
-        function showJoinModal() {
-            document.getElementById('joinModal').classList.add('active');
-            document.getElementById('sessionCode').focus();
-        }
-        
-        function hideJoinModal() {
-            document.getElementById('joinModal').classList.remove('active');
-        }
-        
-        function joinSession(e) {
-            e.preventDefault();
-            const code = document.getElementById('sessionCode').value.trim().toUpperCase();
-            if (code) {
-                window.location.href = `/listen/${code}`;
+        // Check if API keys are configured
+        document.addEventListener('DOMContentLoaded', () => {
+            const keys = localStorage.getItem('rt_api_keys');
+            if (!keys) {
+                document.getElementById('apiWarning').classList.add('show');
+            } else {
+                try {
+                    const parsed = JSON.parse(keys);
+                    if (!parsed.deepgram || !parsed.openai) {
+                        document.getElementById('apiWarning').classList.add('show');
+                    }
+                } catch (e) {
+                    document.getElementById('apiWarning').classList.add('show');
+                }
             }
-        }
-        
-        // Close modal on escape key
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') hideJoinModal();
-        });
-        
-        // Close modal on outside click
-        document.getElementById('joinModal').addEventListener('click', (e) => {
-            if (e.target.id === 'joinModal') hideJoinModal();
         });
     </script>
 </body>

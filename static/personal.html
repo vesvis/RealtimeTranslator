@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Personal Mode - Realtime Translator</title>
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#6366f1">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #0a0a12;
+            --bg-secondary: #12121f;
+            --bg-card: rgba(25, 25, 45, 0.8);
+            --accent-purple: #6366f1;
+            --accent-violet: #8b5cf6;
+            --accent-green: #22c55e;
+            --accent-red: #ef4444;
+            --text-primary: #f3f4f6;
+            --text-secondary: #9ca3af;
+            --text-muted: #6b7280;
+            --border-subtle: rgba(99, 102, 241, 0.2);
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
+            color: var(--text-primary);
+            min-height: 100vh;
+            min-height: -webkit-fill-available;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px;
+            background: var(--bg-card);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--border-subtle);
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .back-btn {
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(99, 102, 241, 0.1);
+            border: 1px solid var(--border-subtle);
+            border-radius: 10px;
+            color: var(--text-primary);
+            text-decoration: none;
+            font-size: 1.1rem;
+        }
+
+        .header-title {
+            font-size: 1.2rem;
+            font-weight: 700;
+        }
+
+        .settings-btn {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 1.3rem;
+        }
+
+        /* Main content */
+        .main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            gap: 20px;
+        }
+
+        /* Language selectors */
+        .lang-bar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 16px;
+            background: var(--bg-card);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--border-subtle);
+            border-radius: 16px;
+        }
+
+        .lang-select {
+            flex: 1;
+            padding: 12px;
+            background: rgba(35, 35, 55, 0.9);
+            border: 1px solid var(--border-subtle);
+            border-radius: 10px;
+            color: var(--text-primary);
+            font-size: 0.95rem;
+            font-family: inherit;
+        }
+
+        .lang-arrow {
+            font-size: 1.2rem;
+            color: var(--accent-purple);
+        }
+
+        /* Big button */
+        .control-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 24px;
+        }
+
+        .start-btn {
+            width: 180px;
+            height: 180px;
+            border-radius: 50%;
+            border: none;
+            background: linear-gradient(135deg, var(--accent-purple), var(--accent-violet));
+            color: white;
+            font-size: 1.4rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 10px 40px rgba(99, 102, 241, 0.4);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .start-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 15px 50px rgba(99, 102, 241, 0.5);
+        }
+
+        .start-btn.active {
+            background: linear-gradient(135deg, var(--accent-red), #dc2626);
+            box-shadow: 0 10px 40px rgba(239, 68, 68, 0.4);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                box-shadow: 0 10px 40px rgba(239, 68, 68, 0.4);
+            }
+
+            50% {
+                box-shadow: 0 10px 60px rgba(239, 68, 68, 0.6);
+            }
+        }
+
+        .start-btn .icon {
+            font-size: 3rem;
+        }
+
+        .status-text {
+            font-size: 0.95rem;
+            color: var(--text-muted);
+            text-align: center;
+        }
+
+        .status-text.listening {
+            color: var(--accent-green);
+        }
+
+        /* Audio level */
+        .audio-level {
+            width: 100%;
+            max-width: 300px;
+            height: 6px;
+            background: rgba(99, 102, 241, 0.2);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .audio-level-bar {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, var(--accent-purple), var(--accent-green));
+            border-radius: 3px;
+            transition: width 0.1s ease;
+        }
+
+        /* Transcript panels */
+        .transcript-area {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .transcript-panel {
+            background: var(--bg-card);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--border-subtle);
+            border-radius: 16px;
+            padding: 16px;
+        }
+
+        .transcript-label {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .transcript-text {
+            font-size: 1rem;
+            line-height: 1.5;
+            min-height: 48px;
+            color: var(--text-secondary);
+        }
+
+        .transcript-panel.translation .transcript-text {
+            color: var(--text-primary);
+            font-weight: 500;
+        }
+
+        /* Error message */
+        .error-message {
+            display: none;
+            padding: 16px;
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 12px;
+            color: #fca5a5;
+            text-align: center;
+        }
+
+        .error-message.show {
+            display: block;
+        }
+
+        /* Mobile adjustments */
+        @media (max-height: 700px) {
+            .start-btn {
+                width: 140px;
+                height: 140px;
+                font-size: 1.1rem;
+            }
+
+            .start-btn .icon {
+                font-size: 2.5rem;
+            }
+        }
+
+        /* Warning Banner */
+        .warning-banner {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 14px 16px;
+            background: rgba(245, 158, 11, 0.15);
+            border: 1px solid rgba(245, 158, 11, 0.4);
+            border-radius: 12px;
+            margin-bottom: 16px;
+        }
+
+        .warning-icon {
+            font-size: 1.3rem;
+        }
+
+        .warning-text {
+            flex: 1;
+            font-size: 0.85rem;
+            color: #fbbf24;
+            line-height: 1.4;
+        }
+
+        .warning-dismiss {
+            background: none;
+            border: none;
+            color: #fbbf24;
+            cursor: pointer;
+            padding: 4px 8px;
+            font-size: 1rem;
+            opacity: 0.7;
+        }
+
+        .warning-dismiss:hover {
+            opacity: 1;
+        }
+
+        .warning-banner.hidden {
+            display: none;
+        }
+
+        /* Warning Toast (for low confidence) */
+        .warning-toast {
+            position: fixed;
+            top: -100px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(245, 158, 11, 0.95);
+            color: #1a1a2e;
+            padding: 12px 20px;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            max-width: 90%;
+            text-align: center;
+            z-index: 1000;
+            transition: top 0.3s ease;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .warning-toast.show {
+            top: 20px;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="header-left">
+            <a href="/" class="back-btn">←</a>
+            <h1 class="header-title">🎧 Personal Mode</h1>
+        </div>
+        <a href="/settings" class="settings-btn">⚙️</a>
+    </header>
+
+    <!-- Main content -->
+    <main class="main">
+        <!-- Language selector -->
+        <div class="lang-bar">
+            <select id="sourceLang" class="lang-select">
+                <option value="tr">Turkish</option>
+                <option value="en">English</option>
+                <option value="es">Spanish</option>
+                <option value="fr">French</option>
+                <option value="de">German</option>
+                <option value="ar">Arabic</option>
+                <option value="zh">Chinese</option>
+                <option value="ja">Japanese</option>
+                <option value="ko">Korean</option>
+                <option value="ru">Russian</option>
+            </select>
+            <span class="lang-arrow">→</span>
+            <select id="targetLang" class="lang-select">
+                <option value="en" selected>English</option>
+                <option value="tr">Turkish</option>
+                <option value="es">Spanish</option>
+                <option value="fr">French</option>
+                <option value="de">German</option>
+                <option value="ar">Arabic</option>
+                <option value="zh">Chinese</option>
+                <option value="ja">Japanese</option>
+                <option value="ko">Korean</option>
+                <option value="ru">Russian</option>
+            </select>
+        </div>
+
+        <!-- Headphone Warning -->
+        <div class="warning-banner" id="headphoneWarning">
+            <span class="warning-icon">🎧</span>
+            <span class="warning-text">Use headphones to prevent echo. Without headphones, the translated audio may be
+                picked up by your mic.</span>
+            <button class="warning-dismiss" onclick="dismissHeadphoneWarning()">✕</button>
+        </div>
+
+        <!-- Error message -->
+        <div class="error-message" id="errorMessage"></div>
+
+        <!-- Control area -->
+        <div class="control-area">
+            <button id="startBtn" class="start-btn">
+                <span class="icon">🎧</span>
+                <span id="btnText">Start</span>
+            </button>
+
+            <p id="statusText" class="status-text">
+                Point your phone at the speaker
+            </p>
+
+            <div class="audio-level">
+                <div id="audioLevel" class="audio-level-bar"></div>
+            </div>
+        </div>
+
+        <!-- Transcripts -->
+        <div class="transcript-area">
+            <div class="transcript-panel">
+                <div class="transcript-label">🎤 What I hear</div>
+                <p id="originalText" class="transcript-text">—</p>
+            </div>
+            <div class="transcript-panel translation">
+                <div class="transcript-label">🔊 Translation</div>
+                <p id="translationText" class="transcript-text">—</p>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // State
+        let isListening = false;
+        let ws = null;
+        let mediaRecorder = null;
+        let audioContext = null;
+        let analyser = null;
+
+        // DOM elements
+        const startBtn = document.getElementById('startBtn');
+        const btnText = document.getElementById('btnText');
+        const statusText = document.getElementById('statusText');
+        const audioLevel = document.getElementById('audioLevel');
+        const originalText = document.getElementById('originalText');
+        const translationText = document.getElementById('translationText');
+        const errorMessage = document.getElementById('errorMessage');
+        const sourceLang = document.getElementById('sourceLang');
+        const targetLang = document.getElementById('targetLang');
+        const headphoneWarning = document.getElementById('headphoneWarning');
+
+        // Check if user dismissed the warning before
+        if (localStorage.getItem('rt_headphone_warning_dismissed') === 'true') {
+            headphoneWarning.classList.add('hidden');
+        }
+
+        // Dismiss headphone warning
+        function dismissHeadphoneWarning() {
+            headphoneWarning.classList.add('hidden');
+            localStorage.setItem('rt_headphone_warning_dismissed', 'true');
+        }
+
+        // Check for API keys
+        function checkApiKeys() {
+            const keys = localStorage.getItem('rt_api_keys');
+            if (!keys) {
+                showError('Please configure your API keys in Settings first.');
+                return null;
+            }
+            try {
+                const parsed = JSON.parse(keys);
+                if (!parsed.deepgram || !parsed.openai) {
+                    showError('Missing required API keys. Please configure in Settings.');
+                    return null;
+                }
+                return parsed;
+            } catch (e) {
+                showError('Invalid API keys. Please reconfigure in Settings.');
+                return null;
+            }
+        }
+
+        function showError(msg) {
+            errorMessage.textContent = msg;
+            errorMessage.classList.add('show');
+        }
+
+        function hideError() {
+            errorMessage.classList.remove('show');
+        }
+
+        // Toggle listening
+        startBtn.addEventListener('click', async () => {
+            if (isListening) {
+                stopListening();
+            } else {
+                await startListening();
+            }
+        });
+
+        async function startListening() {
+            hideError();
+
+            // Check API keys
+            const keys = checkApiKeys();
+            if (!keys) return;
+
+            try {
+                // Request microphone permission
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        sampleRate: 16000
+                    }
+                });
+
+                // Setup audio analysis for level meter
+                audioContext = new AudioContext();
+                const source = audioContext.createMediaStreamSource(stream);
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 256;
+                source.connect(analyser);
+                updateAudioLevel();
+
+                // Connect WebSocket
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                ws = new WebSocket(`${protocol}//${window.location.host}/ws/personal`);
+
+                ws.onopen = () => {
+                    // Send config with API keys
+                    // Determine TTS service: elevenlabs if key exists, else deepgram (free with Deepgram account)
+                    const ttsService = keys.elevenlabs ? 'elevenlabs' : 'deepgram';
+
+                    // Get translation context from localStorage
+                    const translationContext = localStorage.getItem('rt_context') || '';
+
+                    ws.send(JSON.stringify({
+                        type: 'config',
+                        api_keys: keys,
+                        source_lang: sourceLang.value,
+                        target_lang: targetLang.value,
+                        tts_service: ttsService,
+                        context: translationContext
+                    }));
+
+                    // Start recording
+                    mediaRecorder = new MediaRecorder(stream, {
+                        mimeType: 'audio/webm;codecs=opus'
+                    });
+
+                    mediaRecorder.ondataavailable = (e) => {
+                        if (e.data.size > 0 && ws.readyState === WebSocket.OPEN) {
+                            ws.send(e.data);
+                        }
+                    };
+
+                    mediaRecorder.start(250); // Send chunks every 250ms
+
+                    isListening = true;
+                    updateUI();
+                };
+
+                ws.onmessage = (e) => {
+                    const data = JSON.parse(e.data);
+
+                    if (data.type === 'transcript') {
+                        originalText.textContent = data.text || '—';
+                    } else if (data.type === 'translation') {
+                        translationText.textContent = data.text || '—';
+                    } else if (data.type === 'audio') {
+                        // Play translation audio
+                        playAudio(data.audio);
+                    } else if (data.type === 'error') {
+                        showError(data.message);
+                    } else if (data.type === 'warning') {
+                        showWarning(data.message);
+                    }
+                };
+
+                ws.onerror = (e) => {
+                    console.error('WebSocket error:', e);
+                    showError('Connection error. Please try again.');
+                    stopListening();
+                };
+
+                ws.onclose = () => {
+                    if (isListening) {
+                        stopListening();
+                    }
+                };
+
+            } catch (err) {
+                console.error('Error:', err);
+                if (err.name === 'NotAllowedError') {
+                    showError('Microphone access denied. Please allow microphone access.');
+                } else {
+                    showError(`Error: ${err.message}`);
+                }
+            }
+        }
+
+        function stopListening() {
+            isListening = false;
+
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                mediaRecorder.stop();
+            }
+
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+
+            if (audioContext) {
+                audioContext.close();
+                audioContext = null;
+            }
+
+            updateUI();
+        }
+
+        function updateUI() {
+            if (isListening) {
+                startBtn.classList.add('active');
+                btnText.textContent = 'Stop';
+                statusText.textContent = 'Listening...';
+                statusText.classList.add('listening');
+            } else {
+                startBtn.classList.remove('active');
+                btnText.textContent = 'Start';
+                statusText.textContent = 'Point your phone at the speaker';
+                statusText.classList.remove('listening');
+                audioLevel.style.width = '0%';
+            }
+        }
+
+        function updateAudioLevel() {
+            if (!analyser || !isListening) return;
+
+            const dataArray = new Uint8Array(analyser.frequencyBinCount);
+            analyser.getByteFrequencyData(dataArray);
+
+            // Calculate average level
+            const avg = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
+            const level = Math.min(100, (avg / 128) * 100);
+
+            audioLevel.style.width = `${level}%`;
+
+            requestAnimationFrame(updateAudioLevel);
+        }
+
+        function playAudio(base64Audio) {
+            const audio = new Audio(`data:audio/mp3;base64,${base64Audio}`);
+            audio.play().catch(e => console.log('Audio play failed:', e));
+        }
+
+        // Show warning toast for low audio quality
+        let warningTimeout = null;
+        function showWarning(message) {
+            // Reuse or create warning toast
+            let toast = document.getElementById('warningToast');
+            if (!toast) {
+                toast = document.createElement('div');
+                toast.id = 'warningToast';
+                toast.className = 'warning-toast';
+                document.body.appendChild(toast);
+            }
+
+            toast.innerHTML = `<span>⚠️ ${message}</span>`;
+            toast.classList.add('show');
+
+            // Auto-dismiss after 5 seconds
+            if (warningTimeout) clearTimeout(warningTimeout);
+            warningTimeout = setTimeout(() => {
+                toast.classList.remove('show');
+            }, 5000);
+        }
+
+        // Prevent accidental back navigation on mobile
+        window.addEventListener('beforeunload', (e) => {
+            if (isListening) {
+                e.preventDefault();
+                e.returnValue = '';
+            }
+        });
+    </script>
+</body>
+
+</html>

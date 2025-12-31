@@ -169,9 +169,11 @@ DEFAULT_PROMPT = {
     "description": "General-purpose translation with natural speech formatting",
     "prompt": """You are an expert simultaneous interpreter. Your goal is to produce natural, fluent speech while preserving the speaker's meaning accurately.
 
-**INPUT DATA:**
-- [CONTEXT]: Previous sentences for continuity.
-- [TARGET_BATCH]: Text to translate.
+**INPUT FORMAT:**
+You will receive:
+- [CONTEXT]: Previous translated sentences (for continuity - read only)
+- [TARGET_BATCH]: The current text to translate
+- Additional user-provided context may be included below with domain-specific terminology or style guidance.
 
 **TRANSLATION APPROACH:**
 - Preserve the speaker's meaning and intent accurately.
@@ -181,13 +183,9 @@ DEFAULT_PROMPT = {
 
 **INSTRUCTIONS:**
 1. Translate accurately but naturally - balance faithfulness with fluency.
-2. Remove stuttering and false starts.
+2. Remove stuttering, false starts, and filler words.
 3. Output each sentence on a NEW LINE for natural pauses.
-4. Use "||" on its own line for:
-   - Major topic shifts
-   - When a QUESTION is directed at someone
-   - When a speaker FINISHES their turn and another begins
-   - Transitions between speakers
+4. Use "||" on its own line for major topic shifts or speaker transitions.
 
 **Output:** Provide ONLY the translation with line breaks."""
 }
@@ -243,14 +241,9 @@ def get_speaker_name(speaker_id: int) -> str:
 def get_speaker_voice(speaker_id: int) -> str:
     """Get voice ID for a speaker based on current service configuration.
     
-    For main speaker (0), ALWAYS uses the voice explicitly selection in GUI (config['voice_id']).
+    For main speaker (0), uses the voice selected in GUI (ElevenLabs only) or default for other services.
     For contributors, uses the predefined per-service mapping.
     """
-    if speaker_id == 0:
-        # Use the voice selected in config/GUI for main speaker
-        return config.get("voice_id", SPEAKER_VOICES_ELEVENLABS[0])
-    
-    # For contributors, map to the correct service's voice ID
     service = config.get("tts_service", "elevenlabs")
     
     if service == "openai":
@@ -261,36 +254,93 @@ def get_speaker_voice(speaker_id: int) -> str:
     
     elif service == "deepgram":
         return SPEAKER_VOICES_DEEPGRAM.get(speaker_id, SPEAKER_VOICES_DEEPGRAM[0])
-        
-    # Default / ElevenLabs
+    
+    # ElevenLabs - use config voice for main speaker, predefined for others
+    if speaker_id == 0:
+        return config.get("voice_id", SPEAKER_VOICES_ELEVENLABS[0])
     return SPEAKER_VOICES_ELEVENLABS.get(speaker_id, SPEAKER_VOICES_ELEVENLABS[0])
 
 # ============== API Clients ==============
 
-deepgram_key = os.getenv("DEEPGRAM_API_KEY")
-openai_key = os.getenv("OPENAI_API_KEY")
-elevenlabs_key = os.getenv("ELEVENLABS_API_KEY")
-fish_audio_key = os.getenv("FISH_AUDIO_API_KEY")
+# Default keys from .env (used as fallback)
+_env_deepgram_key = os.getenv("DEEPGRAM_API_KEY")
+_env_openai_key = os.getenv("OPENAI_API_KEY")
+_env_elevenlabs_key = os.getenv("ELEVENLABS_API_KEY")
+_env_fish_audio_key = os.getenv("FISH_AUDIO_API_KEY")
 
-# Validate API keys
-def check_api_keys():
-    missing = []
-    if not deepgram_key or deepgram_key == "dummy_key":
-        missing.append("DEEPGRAM_API_KEY")
-    if not openai_key or openai_key == "dummy_key":
-        missing.append("OPENAI_API_KEY")
-    if not elevenlabs_key or elevenlabs_key == "dummy_key":
-        missing.append("ELEVENLABS_API_KEY")
-    
-    if missing:
-        print(f"ERROR: Missing API keys: {', '.join(missing)}")
-        print("Please set them in your .env file")
-        sys.exit(1)
+# Active API keys (can be overwritten by config)
+deepgram_key = _env_deepgram_key
+openai_key = _env_openai_key
+elevenlabs_key = _env_elevenlabs_key
+fish_audio_key = _env_fish_audio_key
 
+# API Clients (initialized with defaults, can be re-initialized)
 deepgram_client = DeepgramClient(deepgram_key or "dummy_key")
 openai_client = AsyncOpenAI(api_key=openai_key or "dummy_key")
 elevenlabs_client = ElevenLabs(api_key=elevenlabs_key or "dummy_key")
 # Fish Audio session is created per-request to handle async context properly
+
+
+def init_api_clients(user_keys: dict = None):
+    """Initialize or re-initialize API clients with user-provided keys.
+    
+    Args:
+        user_keys: Dict with keys like {"deepgram": "key", "openai": "key", ...}
+                   If a key is empty/None, falls back to .env value.
+    """
+    global deepgram_key, openai_key, elevenlabs_key, fish_audio_key
+    global deepgram_client, openai_client, elevenlabs_client
+    
+    if user_keys:
+        # Use user-provided keys if present, otherwise fall back to .env
+        deepgram_key = user_keys.get("deepgram") or _env_deepgram_key
+        openai_key = user_keys.get("openai") or _env_openai_key
+        elevenlabs_key = user_keys.get("elevenlabs") or _env_elevenlabs_key
+        fish_audio_key = user_keys.get("fish_audio") or _env_fish_audio_key
+    else:
+        # Use .env keys
+        deepgram_key = _env_deepgram_key
+        openai_key = _env_openai_key
+        elevenlabs_key = _env_elevenlabs_key
+        fish_audio_key = _env_fish_audio_key
+    
+    # Re-initialize clients with new keys
+    deepgram_client = DeepgramClient(deepgram_key or "dummy_key")
+    openai_client = AsyncOpenAI(api_key=openai_key or "dummy_key")
+    elevenlabs_client = ElevenLabs(api_key=elevenlabs_key or "dummy_key")
+    
+    print(f"🔑 API clients initialized (Deepgram: {'✓' if deepgram_key else '✗'}, "
+          f"OpenAI: {'✓' if openai_key else '✗'}, "
+          f"ElevenLabs: {'✓' if elevenlabs_key else '✗'}, "
+          f"Fish Audio: {'✓' if fish_audio_key else '✗'})")
+
+
+def check_api_keys(user_keys: dict = None):
+    """Validate that required API keys are present.
+    
+    Args:
+        user_keys: Optional dict of user-provided keys to validate
+    """
+    dg = (user_keys or {}).get("deepgram") or deepgram_key
+    oai = (user_keys or {}).get("openai") or openai_key
+    el = (user_keys or {}).get("elevenlabs") or elevenlabs_key
+    
+    missing = []
+    if not dg or dg == "dummy_key":
+        missing.append("DEEPGRAM_API_KEY")
+    if not oai or oai == "dummy_key":
+        missing.append("OPENAI_API_KEY")
+    
+    # ElevenLabs is optional if using other TTS
+    tts_service = config.get("tts_service", "elevenlabs")
+    if tts_service == "elevenlabs" and (not el or el == "dummy_key"):
+        missing.append("ELEVENLABS_API_KEY")
+    
+    if missing:
+        print(f"⚠️  Missing API keys: {', '.join(missing)}")
+        print("   Please provide them in the GUI or .env file")
+        return False
+    return True
 
 # ============== FastAPI App ==============
 
@@ -615,7 +665,7 @@ class RecordingManager:
                 self.transcript_file.write(f"# Recording ended: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
                 self.transcript_file.write(f"# Total segments: {self.segment_count}\n")
                 self.transcript_file.close()
-            except:
+            except Exception:
                 pass
             self.transcript_file = None
         
@@ -664,6 +714,49 @@ def construct_payload(history: list, current: str) -> str:
     
     return "\n".join(payload_parts)
 
+
+# Common words for language detection (echo prevention)
+LANG_INDICATORS = {
+    "en": {"the", "is", "are", "was", "were", "have", "has", "been", "being", "this", "that", "with", "from", "they", "will", "would", "could", "should"},
+    "tr": {"bir", "bu", "ve", "için", "ile", "olan", "var", "yok", "gibi", "daha", "çok", "ama", "ancak", "için", "olarak"},
+    "ar": {"في", "من", "إلى", "على", "هذا", "هذه", "الذي", "التي", "كان", "يكون"},
+    "de": {"der", "die", "das", "und", "ist", "sind", "war", "haben", "werden", "nicht"},
+    "fr": {"le", "la", "les", "est", "sont", "était", "ont", "avec", "pour", "dans"},
+    "es": {"el", "la", "los", "las", "es", "son", "está", "están", "con", "para"},
+}
+
+async def is_likely_target_language(text: str, target_lang: str) -> bool:
+    """
+    Detect if text is likely already in the target language.
+    Used to prevent echo/feedback when TTS output is picked up by microphone.
+    
+    Returns True if we should SKIP this text (it's already in target language).
+    """
+    if not text or len(text.strip()) < 10:
+        return False
+    
+    words = set(text.lower().split())
+    
+    # Get indicators for target language
+    target_indicators = LANG_INDICATORS.get(target_lang, set())
+    if not target_indicators:
+        return False  # Can't detect, allow translation
+    
+    # Count how many target language indicator words are present
+    matches = len(words & target_indicators)
+    word_count = len(words)
+    
+    # If more than 30% of words are target language indicators, likely already translated
+    if word_count > 0 and matches / word_count > 0.3:
+        return True
+    
+    # If at least 3 common target language words found in short text
+    if word_count < 15 and matches >= 3:
+        return True
+    
+    return False
+
+
 async def translate_text(text: str, history: list = None) -> str:
     """Translate text using OpenAI with context-aware prompting.
     
@@ -687,11 +780,26 @@ async def translate_text(text: str, history: list = None) -> str:
 You MUST translate from {source_lang} into {target_lang}. IGNORE any conflicting language instructions below.
 
 """
+        # User-provided context comes AFTER the base prompt (domain-specific additions)
+        user_context = config.get("user_context", "")
+        context_section = ""
+        if user_context:
+            # Debug: Show that user context is being used
+            preview = user_context[:100].replace('\n', ' ')
+            print(f"  📝 Using user context: \"{preview}{'...' if len(user_context) > 100 else ''}\"")
+            
+            context_section = f"""
+
+**ADDITIONAL USER CONTEXT:**
+{user_context}
+"""
+        
         language_suffix = f"""
 
 **CRITICAL OVERRIDE:** Output ONLY in {target_lang}. Do NOT output in English or any other language unless {target_lang} IS English.
 """
-        system_prompt = language_prefix + base_prompt + language_suffix
+        # Structure: language_prefix + base_prompt + user_context + language_suffix
+        system_prompt = language_prefix + base_prompt + context_section + language_suffix
         
         # Use structured payload with context delimiters
         user_content = construct_payload(
@@ -843,64 +951,6 @@ def format_text_for_tts(text: str) -> str:
     return text
 
 
-async def generate_speech(text: str, speaker_id: int = 0) -> Optional[bytes]:
-    """Generate speech using ElevenLabs with speaker-specific voice.
-       Falls back to OpenAI TTS if ElevenLabs quota is exceeded.
-    """
-    try:
-        # Get voice based on speaker ID (for diarization)
-        voice_id = get_speaker_voice(speaker_id)
-        
-        # Format text with SSML breaks for natural pauses
-        formatted_text = format_text_for_tts(text)
-        
-        # Note: This blocks until the stream begins; ran in thread via fastapi usually but here we await
-        # For now keeping as is since it was working before quota error
-        audio = elevenlabs_client.generate(
-            text=formatted_text,
-            voice=voice_id,
-            model="eleven_turbo_v2"
-        )
-        
-        # Collect audio chunks
-        audio_bytes = b""
-        for chunk in audio:
-            audio_bytes += chunk
-        
-        return audio_bytes
-    except Exception as e:
-        error_msg = str(e).lower()
-        if "quota_exceeded" in error_msg or "status_code: 401" in error_msg or "401" in error_msg:
-            print(f"⚠️ ElevenLabs Quota Exceeded. Switching to OpenAI TTS fallback.")
-            try:
-                # Map speaker to OpenAI voice
-                # Drew (Main) -> onyx (Deep, authoritative)
-                # Will (Contrib 1) -> alloy (Neutral)
-                # Chris (Contrib 2) -> echo (Warm)
-                openai_voice = "alloy"
-                if speaker_id == 0:
-                    openai_voice = "onyx" 
-                elif speaker_id == 2:
-                    openai_voice = "echo"
-                
-                # Prepare text for OpenAI (replace || with ellipsis, no SSML)
-                import re
-                # Replace || markers with ellipsis for pause
-                clean_text = re.sub(r'\s*\|\|\s*', '... ', text)
-                # Remove any potential HTML/XML tags just in case
-                clean_text = re.sub(r'<[^>]+>', '', clean_text)
-                
-                response = await openai_client.audio.speech.create(
-                    model="tts-1",
-                    voice=openai_voice,
-                    input=clean_text
-                )
-                return response.content
-            except Exception as e2:
-                print(f"Fallback TTS error: {e2}")
-                return None
-        print(f"ElevenLabs TTS Error: {e}")
-        return None
 
 async def generate_openai_audio(text: str, voice_id: str) -> Optional[bytes]:
     """Generate speech using OpenAI TTS."""
@@ -965,8 +1015,8 @@ async def generate_deepgram_audio(text: str, voice_id: str) -> Optional[bytes]:
             encoding="mp3"
         )
         
-        # Use stream() to get audio as BytesIO
-        response = deepgram_client.speak.rest.v("1").stream(
+        # Use stream_memory() to get audio as BytesIO (new API, replaces deprecated stream())
+        response = deepgram_client.speak.rest.v("1").stream_memory(
             source={"text": text},
             options=options
         )
@@ -1041,7 +1091,7 @@ async def broadcast_to_listeners(message: dict):
     for ws in active_session.listener_ws_set:
         try:
             await ws.send_json(message)
-        except:
+        except Exception:
             disconnected.add(ws)
     
     # Remove disconnected listeners
@@ -1213,7 +1263,7 @@ async def reconnect_deepgram(retry_count: int = 0):
         if producer.dg_connection:
             try:
                 producer.dg_connection.finish()
-            except:
+            except Exception:
                 pass
         
         # Create new connection
@@ -1320,14 +1370,14 @@ def cleanup_audio():
         try:
             producer.stream.stop_stream()
             producer.stream.close()
-        except:
+        except Exception:
             pass
         producer.stream = None
     
     if producer.pyaudio_instance:
         try:
             producer.pyaudio_instance.terminate()
-        except:
+        except Exception:
             pass
         producer.pyaudio_instance = None
 
@@ -1417,6 +1467,18 @@ async def serve_landing():
 @app.get("/listen/{session_code}", response_class=HTMLResponse)
 async def serve_listener(session_code: str):
     return FileResponse("static/listener.html")
+
+@app.get("/settings", response_class=HTMLResponse)
+async def serve_settings():
+    return FileResponse("static/settings.html")
+
+@app.get("/host", response_class=HTMLResponse)
+async def serve_host():
+    return FileResponse("static/host.html")
+
+@app.get("/personal", response_class=HTMLResponse)
+async def serve_personal():
+    return FileResponse("static/personal.html")
 
 # ============== API Routes ==============
 
@@ -1672,7 +1734,7 @@ async def listener_websocket(websocket: WebSocket, session_id: str):
                 # Send keepalive ping to client
                 try:
                     await websocket.send_json({"type": "ping"})
-                except:
+                except Exception:
                     break  # Connection lost
     
     except WebSocketDisconnect:
@@ -1681,6 +1743,428 @@ async def listener_websocket(websocket: WebSocket, session_id: str):
     finally:
         active_session.listener_ws_set.discard(websocket)
         print(f"Listener disconnected ({len(active_session.listener_ws_set)} remaining)")
+
+
+@app.websocket("/ws/personal")
+async def personal_translation_ws(websocket: WebSocket):
+    """WebSocket endpoint for Personal Mode translation.
+    
+    Flow:
+    1. Receive config with API keys, source/target lang
+    2. Receive audio chunks from browser
+    3. Send to Deepgram for transcription
+    4. Translate via OpenAI
+    5. Generate TTS
+    6. Send audio back to browser
+    """
+    await websocket.accept()
+    print("Personal Mode: Client connected")
+    
+    dg_connection = None
+    user_config = {}
+    
+    try:
+        # Wait for config message first
+        config_msg = await websocket.receive_json()
+        if config_msg.get("type") != "config":
+            await websocket.send_json({"type": "error", "message": "Expected config message first"})
+            return
+        
+        user_config = config_msg
+        user_keys = config_msg.get("api_keys", {})
+        user_context = config_msg.get("context", "")  # User-provided translation context
+        
+        # Initialize API clients with user's keys
+        init_api_clients(user_keys)
+        
+        # Get language codes and names
+        source_lang_code = config_msg.get("source_lang", "tr")
+        target_lang_code = config_msg.get("target_lang", "en")
+        source_lang_name = next((name for code, name, dg in LANGUAGES if code == source_lang_code), "Turkish")
+        target_lang_name = next((name for code, name, dg in LANGUAGES if code == target_lang_code), "English")
+        dg_lang_code = next((dg for code, name, dg in LANGUAGES if code == source_lang_code), "en")
+        
+        # Update config with user preferences including language names
+        config.update({
+            "source_lang": source_lang_code,
+            "target_lang": target_lang_code,
+            "source_lang_name": source_lang_name,
+            "target_lang_name": target_lang_name,
+            "tts_service": config_msg.get("tts_service", "elevenlabs"),
+            "user_context": user_context,  # Store user context for translation
+        })
+        
+        if user_context:
+            print(f"Personal Mode: Using custom context ({len(user_context)} chars)")
+        
+        # Initialize Deepgram connection
+        dg_connection = deepgram_client.listen.asyncwebsocket.v("1")
+        
+        # Buffer for accumulating transcripts - SAME SETTINGS AS GUI MODE
+        # timeout_seconds=15.0 for batching, batch_threshold=10 words, min_words=3
+        transcript_buffer = TranslationBuffer(timeout_seconds=15.0, batch_threshold=10)
+        current_speaker = 0
+        
+        # Deepgram handlers - matching GUI mode logic
+        async def on_transcript(self, result, **kwargs):
+            nonlocal current_speaker
+            
+            transcript = result.channel.alternatives[0].transcript
+            is_final = result.is_final
+            
+            if not transcript:
+                return
+            
+            # Check audio confidence and warn if low
+            confidence = result.channel.alternatives[0].confidence
+            if confidence is not None and confidence < 0.7 and is_final:
+                await websocket.send_json({
+                    "type": "warning",
+                    "message": "Low audio quality detected. Try moving closer to the speaker or reducing background noise.",
+                    "confidence": round(confidence, 2)
+                })
+                print(f"  ⚠️ Low confidence ({confidence:.0%}): '{transcript[:40]}...'")
+            
+            # Extract speaker ID if diarization is enabled
+            words = result.channel.alternatives[0].words
+            speaker_id = current_speaker
+            if words and len(words) > 0:
+                first_word = words[0]
+                if hasattr(first_word, 'speaker') and first_word.speaker is not None:
+                    speaker_id = min(first_word.speaker, 2)
+            
+            if is_final:
+                # Check if speaker changed - flush buffer first
+                if speaker_id != current_speaker and transcript_buffer.has_pending():
+                    content, old_speaker, history = transcript_buffer.flush()
+                    if content:
+                        await process_and_send(content, old_speaker, history)
+                
+                current_speaker = speaker_id
+                
+                # Add to buffer
+                transcript_buffer.add_segment(transcript, speaker_id)
+                
+                # Check if we should flush
+                if transcript_buffer.should_flush():
+                    content, flush_speaker, history = transcript_buffer.flush()
+                    if content:
+                        await process_and_send(content, flush_speaker, history)
+                else:
+                    # Show buffering status on webpage
+                    buffer_content = transcript_buffer.get_buffer_content()
+                    word_count = transcript_buffer.get_word_count()
+                    time_elapsed = transcript_buffer.get_time_elapsed()
+                    
+                    await websocket.send_json({
+                        "type": "transcript", 
+                        "text": buffer_content,
+                        "buffering": True,
+                        "word_count": word_count,
+                        "time_elapsed": round(time_elapsed, 1)
+                    })
+                    
+                    # Also show in console like GUI mode
+                    preview = buffer_content[:60] + "..." if len(buffer_content) > 60 else buffer_content
+                    print(f"  [Personal] ({word_count}w, {time_elapsed:.0f}s/{transcript_buffer.timeout_seconds:.0f}s) {preview}", end="\r")
+            else:
+                # Interim results - show live typing
+                buffer_content = transcript_buffer.get_buffer_content()
+                current = buffer_content + " " + transcript if buffer_content else transcript
+                await websocket.send_json({
+                    "type": "transcript",
+                    "text": current,
+                    "interim": True
+                })
+        
+        async def process_and_send(text: str, speaker_id: int, history: list):
+            """Process translation and send to client - matches GUI mode logic"""
+            # Filter out short fragments
+            words = text.strip().split()
+            if len(words) < MIN_WORDS_TO_PROCESS:
+                print(f"  (skipped short fragment: '{text}')")
+                return
+            
+            # Echo prevention: Skip if text appears to already be in target language
+            target_lang = config.get("target_lang", "en")
+            if await is_likely_target_language(text, target_lang):
+                print(f"  🔇 (skipped - detected target language: '{text[:50]}...')")
+                return
+            
+            speaker_name = get_speaker_name(speaker_id)
+            source_lang_name = config.get("source_lang_name", "Turkish")
+            target_lang_name = config.get("target_lang_name", "English")
+            
+            # Clear buffering line and show formatted output like GUI mode
+            print(" " * 120, end="\r")
+            print(f"\n{'─'*60}")
+            print(f"🎤 [Personal/{speaker_name}] [{source_lang_name}]")
+            print(f"   {text}")
+            
+            try:
+                # Translate with context
+                translation = await translate_text(text, history=history)
+                print(f"🔊 [Personal/{speaker_name}] [{target_lang_name}]")
+                print(f"   {translation}")
+                print(f"{'─'*60}")
+                
+                # Send translation to webpage
+                await websocket.send_json({
+                    "type": "translation", 
+                    "text": translation,
+                    "original": text,
+                    "speaker": speaker_name
+                })
+                
+                # Generate TTS
+                audio_data = await generate_speech(translation, speaker_id)
+                if audio_data:
+                    audio_b64 = base64.b64encode(audio_data).decode('utf-8')
+                    await websocket.send_json({
+                        "type": "audio", 
+                        "audio": audio_b64,
+                        "speaker": speaker_name
+                    })
+                    
+            except Exception as e:
+                print(f"Personal Mode error: {e}")
+                await websocket.send_json({"type": "error", "message": str(e)})
+        
+        # Set handlers
+        dg_connection.on(LiveTranscriptionEvents.Transcript, on_transcript)
+        
+        # Start Deepgram connection
+        options = LiveOptions(
+            model="nova-3",
+            language=dg_lang_code,
+            smart_format=True,
+            punctuate=True,
+            diarize=False,  # No diarization for personal mode (single user)
+            interim_results=True,  # Show live typing
+            endpointing=300,
+        )
+        
+        connected = await dg_connection.start(options)
+        if not connected:
+            await websocket.send_json({"type": "error", "message": "Failed to connect to Deepgram"})
+            return
+        
+        print(f"Personal Mode: Deepgram connected ({source_lang_code} -> {config['target_lang']})")
+        
+        # Receive audio chunks
+        while True:
+            message = await websocket.receive()
+            
+            if message["type"] == "websocket.disconnect":
+                break
+            
+            if "bytes" in message:
+                # Send audio to Deepgram
+                await dg_connection.send(message["bytes"])
+            elif "text" in message:
+                # Handle text commands (ping, config updates)
+                try:
+                    data = json.loads(message["text"])
+                    if data.get("type") == "ping":
+                        await websocket.send_json({"type": "pong"})
+                except Exception:
+                    pass
+    
+    except WebSocketDisconnect:
+        print("Personal Mode: Client disconnected")
+    except Exception as e:
+        print(f"Personal Mode error: {e}")
+        try:
+            await websocket.send_json({"type": "error", "message": str(e)})
+        except Exception:
+            pass
+    finally:
+        if dg_connection:
+            try:
+                await dg_connection.finish()
+            except Exception:
+                pass
+        print("Personal Mode: Connection closed")
+
+
+@app.websocket("/ws/host/{session_id}")
+async def host_broadcast_ws(websocket: WebSocket, session_id: str):
+    """WebSocket endpoint for Host Mode broadcasting from browser.
+    
+    Similar to Personal Mode but also broadcasts to listeners.
+    """
+    global active_session
+    
+    await websocket.accept()
+    session_id = session_id.upper()
+    print(f"Host Mode: Client connected for session {session_id}")
+    
+    dg_connection = None
+    
+    try:
+        # Wait for config message
+        config_msg = await websocket.receive_json()
+        if config_msg.get("type") != "config":
+            await websocket.send_json({"type": "error", "message": "Expected config message first"})
+            return
+        
+        user_keys = config_msg.get("api_keys", {})
+        user_context = config_msg.get("context", "")  # User-provided translation context
+        
+        # Initialize API clients
+        init_api_clients(user_keys)
+        
+        # Get language codes and names
+        source_lang_code = config_msg.get("source_lang", "tr")
+        target_lang_code = config_msg.get("target_lang", "en")
+        source_lang_name = next((name for code, name, dg in LANGUAGES if code == source_lang_code), "Turkish")
+        target_lang_name = next((name for code, name, dg in LANGUAGES if code == target_lang_code), "English")
+        dg_lang_code = next((dg for code, name, dg in LANGUAGES if code == source_lang_code), "en")
+        
+        # Update config with language names
+        config.update({
+            "source_lang": source_lang_code,
+            "target_lang": target_lang_code,
+            "source_lang_name": source_lang_name,
+            "target_lang_name": target_lang_name,
+            "tts_service": config_msg.get("tts_service", "elevenlabs"),
+            "session_id": session_id,
+            "user_context": user_context,  # Store user context for translation
+        })
+        
+        if user_context:
+            print(f"Host Mode: Using custom context ({len(user_context)} chars)")
+        
+        # Create session if needed
+        if not active_session or active_session.id != session_id:
+            active_session = Session(
+                id=session_id,
+                source_lang=config["source_lang"],
+                target_lang=config["target_lang"],
+                is_live=True
+            )
+        else:
+            active_session.is_live = True
+        
+        # Initialize translation buffer
+        transcript_buffer = TranslationBuffer(timeout_seconds=8.0, batch_threshold=10)
+        
+        # Initialize Deepgram
+        dg_connection = deepgram_client.listen.asyncwebsocket.v("1")
+        
+        async def on_transcript(self, result, **kwargs):
+            transcript = result.channel.alternatives[0].transcript
+            if not transcript:
+                return
+            
+            speaker_id = getattr(result.channel.alternatives[0], "speaker", 0) or 0
+            speaker_name = get_speaker_name(speaker_id)
+            
+            # Add to buffer first
+            transcript_buffer.add_segment(transcript, speaker_id)
+            
+            # Show the current buffer content (what will be translated)
+            buffer_content = transcript_buffer.get_buffer_content()
+            if buffer_content:
+                await websocket.send_json({
+                    "type": "transcript", 
+                    "text": buffer_content,
+                    "speaker": speaker_name
+                })
+            
+            # Check if ready
+            if transcript_buffer.should_flush():
+                content, spk_id, history = transcript_buffer.flush()
+                if content:
+                    try:
+                        spk_name = get_speaker_name(spk_id)
+                        
+                        # Translate
+                        translation = await translate_text(content, history)
+                        
+                        # Send to host
+                        await websocket.send_json({
+                            "type": "translation",
+                            "text": translation,
+                            "speaker": spk_name
+                        })
+                        
+                        # Generate TTS
+                        audio_data = await generate_speech(translation, spk_id)
+                        
+                        if audio_data:
+                            audio_b64 = base64.b64encode(audio_data).decode('utf-8')
+                            
+                            # Broadcast to all listeners (use 'data' key for consistency)
+                            await broadcast_to_listeners({
+                                "type": "audio",
+                                "data": audio_b64,
+                                "text": translation,
+                                "original": content,
+                                "speaker_id": spk_id,
+                                "speaker_name": spk_name
+                            })
+                            
+                    except Exception as e:
+                        print(f"Host Mode translation error: {e}")
+        
+        dg_connection.on(LiveTranscriptionEvents.Transcript, on_transcript)
+        
+        options = LiveOptions(
+            model="nova-3",
+            language=dg_lang_code,
+            smart_format=True,
+            punctuate=True,
+            diarize=True,
+            diarize_version="3",
+            interim_results=False,
+            endpointing=300,
+        )
+        
+        connected = await dg_connection.start(options)
+        if not connected:
+            await websocket.send_json({"type": "error", "message": "Failed to connect to Deepgram"})
+            return
+        
+        print(f"Host Mode: Broadcasting session {session_id}")
+        
+        # Main loop
+        while True:
+            message = await websocket.receive()
+            
+            if message["type"] == "websocket.disconnect":
+                break
+            
+            if "bytes" in message:
+                await dg_connection.send(message["bytes"])
+            elif "text" in message:
+                try:
+                    data = json.loads(message["text"])
+                    if data.get("type") == "ping":
+                        await websocket.send_json({
+                            "type": "pong",
+                            "listener_count": len(active_session.listener_ws_set) if active_session else 0
+                        })
+                except Exception:
+                    pass
+    
+    except WebSocketDisconnect:
+        print(f"Host Mode: Client disconnected from session {session_id}")
+    except Exception as e:
+        print(f"Host Mode error: {e}")
+        try:
+            await websocket.send_json({"type": "error", "message": str(e)})
+        except Exception:
+            pass
+    finally:
+        if dg_connection:
+            try:
+                await dg_connection.finish()
+            except Exception:
+                pass
+        if active_session:
+            active_session.is_live = False
+        print(f"Host Mode: Session {session_id} ended")
 
 # ============== Startup / Shutdown ==============
 
@@ -1692,30 +2176,40 @@ async def startup_event():
     check_api_keys()
     
     # Use custom session ID from config
-    session_id = config["session_id"].upper()
+    session_id = config.get("session_id", "LECTURE").upper()
     active_session = Session(
         id=session_id,
-        source_lang=config["source_lang"],
-        target_lang=config["target_lang"],
-        source_lang_name=config["source_lang_name"],
-        target_lang_name=config["target_lang_name"],
-        voice_id=config["voice_id"]
+        source_lang=config.get("source_lang", "tr"),
+        target_lang=config.get("target_lang", "en"),
+        source_lang_name=config.get("source_lang_name", "Turkish"),
+        target_lang_name=config.get("target_lang_name", "English"),
+        voice_id=config.get("voice_id", "29vD33N1CtxCmqQRPOHJ")
     )
     
     # Store event loop for background thread
     producer.loop = asyncio.get_running_loop()
     
-    # Start producer
-    start_producer()
-    
-    # Start buffer timeout checker background task
-    producer.buffer_timeout_task = asyncio.create_task(buffer_timeout_checker())
-    
-    # Print listener link
-    print(f"\n{'='*50}")
-    print(f"Listener link: http://localhost:8000/listen/{session_id}")
-    print("Share this link with your audience!")
-    print(f"{'='*50}")
+    # Only auto-start producer if NOT in web-only mode
+    # Web-only mode uses browser mic via WebSocket, not desktop mic
+    if config.get("auto_start_producer", False):
+        start_producer()
+        # Start buffer timeout checker background task
+        producer.buffer_timeout_task = asyncio.create_task(buffer_timeout_checker())
+        
+        # Print listener link
+        print(f"\n{'='*50}")
+        print(f"Listener link: http://localhost:8000/listen/{session_id}")
+        print("Share this link with your audience!")
+        print(f"{'='*50}")
+    else:
+        # Web-only mode
+        print(f"\n{'='*50}")
+        print("🌐 Web App Mode - Ready!")
+        print(f"   Landing:  http://localhost:8000/")
+        print(f"   Host:     http://localhost:8000/host")
+        print(f"   Personal: http://localhost:8000/personal")
+        print(f"   Settings: http://localhost:8000/settings")
+        print(f"{'='*50}\n")
 
 @app.on_event("shutdown")
 async def shutdown_event():

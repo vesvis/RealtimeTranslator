@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings - Realtime Translator</title>
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#6366f1">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #0a0a12;
+            --bg-secondary: #12121f;
+            --bg-card: rgba(25, 25, 45, 0.8);
+            --accent-purple: #6366f1;
+            --accent-violet: #8b5cf6;
+            --accent-green: #22c55e;
+            --text-primary: #f3f4f6;
+            --text-secondary: #9ca3af;
+            --text-muted: #6b7280;
+            --border-subtle: rgba(99, 102, 241, 0.2);
+            --input-bg: rgba(35, 35, 55, 0.9);
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
+            color: var(--text-primary);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 40px;
+        }
+
+        .back-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 44px;
+            height: 44px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: 12px;
+            color: var(--text-primary);
+            text-decoration: none;
+            font-size: 1.2rem;
+            transition: all 0.2s ease;
+        }
+
+        .back-btn:hover {
+            background: rgba(99, 102, 241, 0.2);
+            border-color: var(--accent-purple);
+        }
+
+        h1 {
+            font-size: 1.8rem;
+            font-weight: 700;
+        }
+
+        /* Card */
+        .card {
+            background: var(--bg-card);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--border-subtle);
+            border-radius: 20px;
+            padding: 32px;
+            margin-bottom: 24px;
+        }
+
+        .card-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .card-description {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            margin-bottom: 24px;
+        }
+
+        /* Form */
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-label {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+
+        .label-text {
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+        }
+
+        .label-link {
+            font-size: 0.8rem;
+            color: var(--accent-purple);
+            text-decoration: none;
+        }
+
+        .label-link:hover {
+            text-decoration: underline;
+        }
+
+        .input-wrapper {
+            position: relative;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 14px 48px 14px 16px;
+            background: var(--input-bg);
+            border: 1px solid var(--border-subtle);
+            border-radius: 12px;
+            color: var(--text-primary);
+            font-size: 0.95rem;
+            font-family: 'Consolas', 'Monaco', monospace;
+            transition: all 0.2s ease;
+        }
+
+        .form-input::placeholder {
+            color: var(--text-muted);
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: var(--accent-purple);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+        }
+
+        .form-textarea {
+            width: 100%;
+            padding: 14px 16px;
+            background: var(--input-bg);
+            border: 1px solid var(--border-subtle);
+            border-radius: 12px;
+            color: var(--text-primary);
+            font-size: 0.95rem;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            resize: vertical;
+            min-height: 120px;
+            transition: all 0.2s ease;
+            line-height: 1.5;
+        }
+
+        .form-textarea::placeholder {
+            color: var(--text-muted);
+        }
+
+        .form-textarea:focus {
+            outline: none;
+            border-color: var(--accent-purple);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+        }
+
+        .toggle-visibility {
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            padding: 8px;
+            cursor: pointer;
+            color: var(--text-muted);
+            font-size: 1.1rem;
+            transition: color 0.2s ease;
+        }
+
+        .toggle-visibility:hover {
+            color: var(--text-primary);
+        }
+
+        .input-status {
+            position: absolute;
+            left: -28px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 0.9rem;
+        }
+
+        /* Checkbox */
+        .checkbox-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-top: 24px;
+            padding-top: 20px;
+            border-top: 1px solid var(--border-subtle);
+        }
+
+        .checkbox {
+            width: 22px;
+            height: 22px;
+            accent-color: var(--accent-purple);
+            cursor: pointer;
+        }
+
+        .checkbox-label {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        /* Button */
+        .save-btn {
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(135deg, var(--accent-purple), var(--accent-violet));
+            border: none;
+            border-radius: 12px;
+            color: white;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .save-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(99, 102, 241, 0.4);
+        }
+
+        .save-btn:active {
+            transform: translateY(0);
+        }
+
+        /* Success message */
+        .success-message {
+            display: none;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 14px;
+            background: rgba(34, 197, 94, 0.1);
+            border: 1px solid rgba(34, 197, 94, 0.3);
+            border-radius: 12px;
+            color: var(--accent-green);
+            font-weight: 500;
+            margin-top: 16px;
+        }
+
+        .success-message.show {
+            display: flex;
+        }
+
+        /* Help card */
+        .help-card {
+            background: rgba(99, 102, 241, 0.1);
+            border: 1px solid rgba(99, 102, 241, 0.2);
+        }
+
+        .help-list {
+            list-style: none;
+        }
+
+        .help-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 0;
+            border-bottom: 1px solid rgba(99, 102, 241, 0.1);
+        }
+
+        .help-item:last-child {
+            border-bottom: none;
+            padding-bottom: 0;
+        }
+
+        .help-icon {
+            font-size: 1.2rem;
+        }
+
+        .help-text {
+            flex: 1;
+        }
+
+        .help-name {
+            font-weight: 600;
+            color: var(--text-primary);
+            font-size: 0.95rem;
+        }
+
+        .help-bonus {
+            font-size: 0.85rem;
+            color: var(--accent-green);
+        }
+
+        .help-link {
+            color: var(--accent-purple);
+            text-decoration: none;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+
+        .help-link:hover {
+            text-decoration: underline;
+        }
+
+        /* Mobile */
+        @media (max-width: 640px) {
+            .header {
+                margin-bottom: 24px;
+            }
+
+            h1 {
+                font-size: 1.5rem;
+            }
+
+            .card {
+                padding: 24px;
+                border-radius: 16px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <a href="/" class="back-btn">←</a>
+            <h1>⚙️ Settings</h1>
+        </header>
+
+        <!-- API Keys Card -->
+        <div class="card">
+            <h2 class="card-title">🔑 API Keys</h2>
+            <p class="card-description">
+                Your keys are stored locally on this device only. They're never sent to our servers.
+            </p>
+
+            <form id="settingsForm">
+                <!-- Deepgram -->
+                <div class="form-group">
+                    <div class="form-label">
+                        <span class="label-text">Deepgram (Speech-to-Text)</span>
+                        <a href="https://console.deepgram.com" target="_blank" class="label-link">Get key →</a>
+                    </div>
+                    <div class="input-wrapper">
+                        <input type="password" id="deepgramKey" class="form-input"
+                            placeholder="Enter your Deepgram API key..." autocomplete="off">
+                        <button type="button" class="toggle-visibility"
+                            onclick="toggleVisibility('deepgramKey')">👁️</button>
+                    </div>
+                </div>
+
+                <!-- OpenAI -->
+                <div class="form-group">
+                    <div class="form-label">
+                        <span class="label-text">OpenAI (Translation)</span>
+                        <a href="https://platform.openai.com/api-keys" target="_blank" class="label-link">Get key →</a>
+                    </div>
+                    <div class="input-wrapper">
+                        <input type="password" id="openaiKey" class="form-input"
+                            placeholder="Enter your OpenAI API key..." autocomplete="off">
+                        <button type="button" class="toggle-visibility"
+                            onclick="toggleVisibility('openaiKey')">👁️</button>
+                    </div>
+                </div>
+
+                <!-- ElevenLabs -->
+                <div class="form-group">
+                    <div class="form-label">
+                        <span class="label-text">ElevenLabs (Text-to-Speech)</span>
+                        <a href="https://elevenlabs.io/app/settings/api-keys" target="_blank" class="label-link">Get key
+                            →</a>
+                    </div>
+                    <div class="input-wrapper">
+                        <input type="password" id="elevenlabsKey" class="form-input"
+                            placeholder="Enter your ElevenLabs API key..." autocomplete="off">
+                        <button type="button" class="toggle-visibility"
+                            onclick="toggleVisibility('elevenlabsKey')">👁️</button>
+                    </div>
+                </div>
+
+                <!-- Fish Audio (optional) -->
+                <div class="form-group">
+                    <div class="form-label">
+                        <span class="label-text">Fish Audio (Optional TTS)</span>
+                        <a href="https://fish.audio" target="_blank" class="label-link">Get key →</a>
+                    </div>
+                    <div class="input-wrapper">
+                        <input type="password" id="fishAudioKey" class="form-input"
+                            placeholder="Optional - Enter Fish Audio API key..." autocomplete="off">
+                        <button type="button" class="toggle-visibility"
+                            onclick="toggleVisibility('fishAudioKey')">👁️</button>
+                    </div>
+                </div>
+
+                <button type="submit" class="save-btn">Save Settings</button>
+
+                <div class="success-message" id="successMessage">
+                    ✓ Settings saved successfully
+                </div>
+            </form>
+        </div>
+
+        <!-- Help Card -->
+        <div class="card help-card">
+            <h2 class="card-title">💡 Need API Keys?</h2>
+            <p class="card-description">Get started free with generous credits:</p>
+
+            <ul class="help-list">
+                <li class="help-item">
+                    <span class="help-icon">🎤</span>
+                    <div class="help-text">
+                        <div class="help-name">Deepgram</div>
+                        <div class="help-bonus">$200 free credit (~775 hours!)</div>
+                    </div>
+                    <a href="https://console.deepgram.com/signup" target="_blank" class="help-link">Sign up</a>
+                </li>
+                <li class="help-item">
+                    <span class="help-icon">🧠</span>
+                    <div class="help-text">
+                        <div class="help-name">OpenAI</div>
+                        <div class="help-bonus">~$5 free credit</div>
+                    </div>
+                    <a href="https://platform.openai.com/signup" target="_blank" class="help-link">Sign up</a>
+                </li>
+                <li class="help-item">
+                    <span class="help-icon">🔊</span>
+                    <div class="help-text">
+                        <div class="help-name">ElevenLabs</div>
+                        <div class="help-bonus">10,000 chars/month free</div>
+                    </div>
+                    <a href="https://elevenlabs.io/sign-up" target="_blank" class="help-link">Sign up</a>
+                </li>
+            </ul>
+        </div>
+
+        <!-- Translation Context Card -->
+        <div class="card">
+            <h2 class="card-title">📝 Translation Context Profiles</h2>
+            <p class="card-description">
+                Create and manage context profiles for different lecture types or topics.
+                The selected profile will be used for translations.
+            </p>
+
+            <!-- Profile Selector -->
+            <div class="form-group">
+                <div class="form-label">
+                    <span class="label-text">Select Profile</span>
+                </div>
+                <div class="profile-selector">
+                    <select id="contextProfile" class="form-select" onchange="loadSelectedProfile()">
+                        <option value="">-- No Context --</option>
+                    </select>
+                    <button type="button" class="icon-btn delete-btn" onclick="deleteProfile()"
+                        title="Delete Profile">🗑️</button>
+                </div>
+            </div>
+
+            <!-- Profile Name (for new/rename) -->
+            <div class="form-group">
+                <div class="form-label">
+                    <span class="label-text">Profile Name</span>
+                </div>
+                <input type="text" id="profileName" class="form-input"
+                    placeholder="e.g., Risale-i Nur, Academic, Business..." style="padding-right: 16px;">
+            </div>
+
+            <!-- Context Content -->
+            <div class="form-group">
+                <div class="form-label">
+                    <span class="label-text">Context / Instructions</span>
+                    <button type="button" class="label-link" onclick="showContextExamples()"
+                        style="background: none; border: none; cursor: pointer;">
+                        📋 Examples
+                    </button>
+                </div>
+                <textarea id="translationContext" class="form-textarea" rows="6" placeholder="Add terminology, style notes, phonetic corrections...
+
+Example:
+This is a lecture about Islamic spirituality.
+Key terms:
+- Üstad = Teacher/Master
+- Iman = Faith"></textarea>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="button-row">
+                <button type="button" class="save-btn" onclick="saveProfile()">💾 Save Profile</button>
+            </div>
+
+            <div class="success-message" id="contextSuccessMessage">
+                ✓ Profile saved successfully
+            </div>
+        </div>
+    </div>
+
+    <style>
+        .profile-selector {
+            display: flex;
+            gap: 8px;
+        }
+
+        .form-select {
+            flex: 1;
+            padding: 14px 16px;
+            background: var(--input-bg);
+            border: 1px solid var(--border-subtle);
+            border-radius: 12px;
+            color: var(--text-primary);
+            font-size: 0.95rem;
+            font-family: inherit;
+        }
+
+        .form-select:focus {
+            outline: none;
+            border-color: var(--accent-purple);
+        }
+
+        .icon-btn {
+            padding: 14px;
+            background: var(--input-bg);
+            border: 1px solid var(--border-subtle);
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: all 0.2s ease;
+        }
+
+        .icon-btn:hover {
+            background: rgba(99, 102, 241, 0.2);
+            border-color: var(--accent-purple);
+        }
+
+        .delete-btn:hover {
+            background: rgba(239, 68, 68, 0.2);
+            border-color: #ef4444;
+        }
+
+        .button-row {
+            display: flex;
+            gap: 12px;
+        }
+
+        .button-row .save-btn {
+            flex: 1;
+        }
+    </style>
+
+    <script>
+        // Context profiles storage
+        let contextProfiles = {};
+        let activeProfileName = '';
+
+        // Load saved data on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            // Load API keys
+            const saved = localStorage.getItem('rt_api_keys');
+            if (saved) {
+                try {
+                    const keys = JSON.parse(saved);
+                    document.getElementById('deepgramKey').value = keys.deepgram || '';
+                    document.getElementById('openaiKey').value = keys.openai || '';
+                    document.getElementById('elevenlabsKey').value = keys.elevenlabs || '';
+                    document.getElementById('fishAudioKey').value = keys.fish_audio || '';
+                } catch (e) {
+                    console.error('Error loading saved keys:', e);
+                }
+            }
+
+            // Load context profiles
+            loadProfiles();
+        });
+
+        function loadProfiles() {
+            const saved = localStorage.getItem('rt_context_profiles');
+            if (saved) {
+                try {
+                    contextProfiles = JSON.parse(saved);
+                } catch (e) {
+                    contextProfiles = {};
+                }
+            }
+
+            // Get active profile name
+            activeProfileName = localStorage.getItem('rt_active_profile') || '';
+
+            // Populate dropdown
+            updateProfileDropdown();
+
+            // Load active profile content
+            if (activeProfileName && contextProfiles[activeProfileName]) {
+                document.getElementById('profileName').value = activeProfileName;
+                document.getElementById('translationContext').value = contextProfiles[activeProfileName];
+            }
+        }
+
+        function updateProfileDropdown() {
+            const select = document.getElementById('contextProfile');
+            select.innerHTML = '<option value="">-- No Context --</option>';
+
+            Object.keys(contextProfiles).forEach(name => {
+                const option = document.createElement('option');
+                option.value = name;
+                option.textContent = name;
+                if (name === activeProfileName) {
+                    option.selected = true;
+                }
+                select.appendChild(option);
+            });
+        }
+
+        function loadSelectedProfile() {
+            const select = document.getElementById('contextProfile');
+            const name = select.value;
+
+            activeProfileName = name;
+            localStorage.setItem('rt_active_profile', name);
+
+            // Also update rt_context for backward compatibility
+            localStorage.setItem('rt_context', contextProfiles[name] || '');
+
+            if (name && contextProfiles[name]) {
+                document.getElementById('profileName').value = name;
+                document.getElementById('translationContext').value = contextProfiles[name];
+            } else {
+                document.getElementById('profileName').value = '';
+                document.getElementById('translationContext').value = '';
+            }
+        }
+
+        function saveProfile() {
+            const name = document.getElementById('profileName').value.trim();
+            const context = document.getElementById('translationContext').value.trim();
+
+            if (!name) {
+                alert('Please enter a profile name');
+                return;
+            }
+
+            // Save profile
+            contextProfiles[name] = context;
+            localStorage.setItem('rt_context_profiles', JSON.stringify(contextProfiles));
+
+            // Set as active
+            activeProfileName = name;
+            localStorage.setItem('rt_active_profile', name);
+            localStorage.setItem('rt_context', context);  // Backward compatibility
+
+            // Update dropdown
+            updateProfileDropdown();
+
+            // Show success
+            const msg = document.getElementById('contextSuccessMessage');
+            msg.classList.add('show');
+            setTimeout(() => msg.classList.remove('show'), 3000);
+        }
+
+        function deleteProfile() {
+            const name = document.getElementById('contextProfile').value;
+            if (!name) {
+                alert('Select a profile to delete');
+                return;
+            }
+
+            if (!confirm(`Delete profile "${name}"?`)) {
+                return;
+            }
+
+            delete contextProfiles[name];
+            localStorage.setItem('rt_context_profiles', JSON.stringify(contextProfiles));
+
+            // Clear active if deleted
+            if (activeProfileName === name) {
+                activeProfileName = '';
+                localStorage.setItem('rt_active_profile', '');
+                localStorage.setItem('rt_context', '');
+            }
+
+            // Clear form and update dropdown
+            document.getElementById('profileName').value = '';
+            document.getElementById('translationContext').value = '';
+            updateProfileDropdown();
+        }
+
+        // Toggle password visibility
+        function toggleVisibility(inputId) {
+            const input = document.getElementById(inputId);
+            input.type = input.type === 'password' ? 'text' : 'password';
+        }
+
+        // Save API keys
+        document.getElementById('settingsForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+
+            const keys = {
+                deepgram: document.getElementById('deepgramKey').value.trim(),
+                openai: document.getElementById('openaiKey').value.trim(),
+                elevenlabs: document.getElementById('elevenlabsKey').value.trim(),
+                fish_audio: document.getElementById('fishAudioKey').value.trim()
+            };
+
+            localStorage.setItem('rt_api_keys', JSON.stringify(keys));
+
+            // Show success message
+            const msg = document.getElementById('successMessage');
+            msg.classList.add('show');
+            setTimeout(() => msg.classList.remove('show'), 3000);
+        });
+
+        // Show context examples
+        function showContextExamples() {
+            const examples = `📚 ACADEMIC LECTURE:
+This is an academic lecture on quantum physics.
+Use formal language and preserve technical terminology.
+
+🕌 RISALE-I NUR:
+This is a lecture about Islamic spirituality from the Risale-i Nur tradition.
+
+ASR PHONETIC CORRECTIONS:
+- "Liman" → "Lem'a" (The Flash - book title)
+- "live cil" → "li-vechillah" (for the sake of God)
+
+KEY TERMINOLOGY:
+- Üstad → Ustad / Master Nursi
+- Cenab-ı Hak → Almighty God
+- Tevhid → Divine Unity
+- Esma-i Hüsna → The Divine Names
+
+💼 BUSINESS MEETING:
+This is a corporate meeting.
+Use professional business English.
+Preserve company names and product names.`;
+
+            alert(examples);
+        }
+    </script>
+</body>
+
+</html>

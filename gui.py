@@ -49,6 +49,7 @@ from server import (
     VOICES,
     load_custom_voices
 )
+from config_manager import get_config_manager
 
 TTS_SERVICES = [
     ("elevenlabs", "ElevenLabs"),
@@ -487,6 +488,10 @@ class ServerThread(QThread):
             # Update server config with GUI config BEFORE starting
             server.config.update(self.config)
             
+            # Initialize API clients with user-provided keys
+            if "api_keys" in self.config:
+                server.init_api_clients(self.config["api_keys"])
+            
             # Log config for debugging
             self.log_signal.emit(f"Session: {self.config['session_id']}")
             self.log_signal.emit(f"Speaker: {self.config['main_speaker_name']}")
@@ -761,6 +766,57 @@ class MainWindow(QMainWindow):
         prompt_layout.addWidget(self.review_checkbox)
         
         layout.addWidget(prompt_group)
+        
+        # API Keys group (BYOK - Bring Your Own Keys)
+        api_keys_group = QGroupBox("🔑 API Keys (BYOK)")
+        api_keys_layout = QVBoxLayout(api_keys_group)
+        api_keys_layout.setSpacing(12)
+        api_keys_layout.setContentsMargins(15, 30, 15, 15)
+        
+        # Info label
+        info_label = QLabel("Enter your own API keys to use the translator.")
+        info_label.setWordWrap(True)
+        info_label.setStyleSheet("color: #6b7280; font-size: 11px;")
+        api_keys_layout.addWidget(info_label)
+        
+        # Deepgram Key
+        api_keys_layout.addWidget(QLabel("Deepgram:"))
+        self.deepgram_key_input = QLineEdit()
+        self.deepgram_key_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.deepgram_key_input.setPlaceholderText("Enter Deepgram API key...")
+        api_keys_layout.addWidget(self.deepgram_key_input)
+        
+        # OpenAI Key
+        api_keys_layout.addWidget(QLabel("OpenAI:"))
+        self.openai_key_input = QLineEdit()
+        self.openai_key_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.openai_key_input.setPlaceholderText("Enter OpenAI API key...")
+        api_keys_layout.addWidget(self.openai_key_input)
+        
+        # ElevenLabs Key
+        api_keys_layout.addWidget(QLabel("ElevenLabs:"))
+        self.elevenlabs_key_input = QLineEdit()
+        self.elevenlabs_key_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.elevenlabs_key_input.setPlaceholderText("Enter ElevenLabs API key...")
+        api_keys_layout.addWidget(self.elevenlabs_key_input)
+        
+        # Fish Audio Key (optional)
+        api_keys_layout.addWidget(QLabel("Fish Audio (optional):"))
+        self.fish_audio_key_input = QLineEdit()
+        self.fish_audio_key_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.fish_audio_key_input.setPlaceholderText("Enter Fish Audio API key...")
+        api_keys_layout.addWidget(self.fish_audio_key_input)
+        
+        # Remember keys checkbox
+        self.remember_keys_checkbox = QCheckBox("Remember my keys")
+        self.remember_keys_checkbox.setChecked(True)
+        self.remember_keys_checkbox.setToolTip("Keys are stored locally on your computer")
+        api_keys_layout.addWidget(self.remember_keys_checkbox)
+        
+        # Load saved keys
+        self._load_saved_api_keys()
+        
+        layout.addWidget(api_keys_group)
         layout.addStretch()
         
         # 3. Set the container as the scroll widget and return the scroll area
@@ -1112,7 +1168,7 @@ class MainWindow(QMainWindow):
         source_idx = self.source_lang.currentIndex()
         target_idx = self.target_lang.currentIndex()
         
-        return {
+        config = {
             "source_lang": LANGUAGES[source_idx][0],
             "source_lang_name": LANGUAGES[source_idx][1],
             "target_lang": LANGUAGES[target_idx][0],
@@ -1129,6 +1185,51 @@ class MainWindow(QMainWindow):
             "tts_service": self.tts_service.currentData(),
             "tts_speed": self.speed_combo.currentData(),  # Get speed directly from dropdown
         }
+        
+        # Add API keys from inputs
+        config["api_keys"] = {
+            "deepgram": self.deepgram_key_input.text().strip(),
+            "openai": self.openai_key_input.text().strip(),
+            "elevenlabs": self.elevenlabs_key_input.text().strip(),
+            "fish_audio": self.fish_audio_key_input.text().strip(),
+        }
+        
+        # Save keys if "Remember" is checked
+        if self.remember_keys_checkbox.isChecked():
+            self._save_api_keys()
+        
+        return config
+    
+    def _load_saved_api_keys(self):
+        """Load API keys from persistent storage."""
+        try:
+            config_manager = get_config_manager()
+            keys = config_manager.get_all_api_keys()
+            
+            self.deepgram_key_input.setText(keys.get("deepgram", ""))
+            self.openai_key_input.setText(keys.get("openai", ""))
+            self.elevenlabs_key_input.setText(keys.get("elevenlabs", ""))
+            self.fish_audio_key_input.setText(keys.get("fish_audio", ""))
+            
+            # Set remember checkbox state
+            self.remember_keys_checkbox.setChecked(config_manager.should_remember_keys())
+        except Exception as e:
+            print(f"Warning: Could not load saved API keys: {e}")
+    
+    def _save_api_keys(self):
+        """Save API keys to persistent storage."""
+        try:
+            config_manager = get_config_manager()
+            keys = {
+                "deepgram": self.deepgram_key_input.text().strip(),
+                "openai": self.openai_key_input.text().strip(),
+                "elevenlabs": self.elevenlabs_key_input.text().strip(),
+                "fish_audio": self.fish_audio_key_input.text().strip(),
+            }
+            config_manager.set_all_api_keys(keys, save_to_disk=True)
+            config_manager.set_remember_keys(self.remember_keys_checkbox.isChecked())
+        except Exception as e:
+            print(f"Warning: Could not save API keys: {e}")
         
     def start_server(self):
         """Start the translation server."""

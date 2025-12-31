@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Host Mode - Realtime Translator</title>
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#6366f1">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #0a0a12;
+            --bg-secondary: #12121f;
+            --bg-card: rgba(25, 25, 45, 0.8);
+            --accent-purple: #6366f1;
+            --accent-violet: #8b5cf6;
+            --accent-green: #22c55e;
+            --accent-red: #ef4444;
+            --text-primary: #f3f4f6;
+            --text-secondary: #9ca3af;
+            --text-muted: #6b7280;
+            --border-subtle: rgba(99, 102, 241, 0.2);
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px;
+            background: var(--bg-card);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--border-subtle);
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .back-btn {
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(99, 102, 241, 0.1);
+            border: 1px solid var(--border-subtle);
+            border-radius: 10px;
+            color: var(--text-primary);
+            text-decoration: none;
+        }
+
+        .header-title {
+            font-size: 1.2rem;
+            font-weight: 700;
+        }
+
+        .settings-btn {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 1.3rem;
+        }
+
+        /* Main */
+        .main {
+            padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        /* Status card */
+        .status-card {
+            background: var(--bg-card);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--border-subtle);
+            border-radius: 20px;
+            padding: 24px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .status-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 20px;
+            color: var(--accent-red);
+            font-weight: 600;
+            font-size: 0.9rem;
+            margin-bottom: 16px;
+        }
+
+        .status-indicator.live {
+            background: rgba(34, 197, 94, 0.1);
+            border-color: rgba(34, 197, 94, 0.3);
+            color: var(--accent-green);
+            animation: pulse-green 2s infinite;
+        }
+
+        @keyframes pulse-green {
+
+            0%,
+            100% {
+                box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4);
+            }
+
+            50% {
+                box-shadow: 0 0 0 8px rgba(34, 197, 94, 0);
+            }
+        }
+
+        .listener-count {
+            font-size: 3rem;
+            font-weight: 800;
+            color: var(--accent-purple);
+        }
+
+        .listener-label {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        /* Share URL */
+        .share-section {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid var(--border-subtle);
+        }
+
+        .share-label {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+        }
+
+        .share-url-box {
+            display: flex;
+            gap: 8px;
+        }
+
+        .share-url {
+            flex: 1;
+            padding: 12px;
+            background: rgba(35, 35, 55, 0.9);
+            border: 1px solid var(--border-subtle);
+            border-radius: 10px;
+            color: var(--accent-purple);
+            font-size: 0.9rem;
+            font-family: 'Consolas', monospace;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .copy-btn {
+            padding: 12px 16px;
+            background: rgba(99, 102, 241, 0.2);
+            border: 1px solid var(--border-subtle);
+            border-radius: 10px;
+            color: var(--text-primary);
+            cursor: pointer;
+            font-size: 1rem;
+        }
+
+        .copy-btn:hover {
+            background: rgba(99, 102, 241, 0.3);
+        }
+
+        /* Config card */
+        .config-card {
+            background: var(--bg-card);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--border-subtle);
+            border-radius: 20px;
+            padding: 24px;
+            margin-bottom: 20px;
+        }
+
+        .config-title {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 20px;
+        }
+
+        .config-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+        }
+
+        .config-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .config-label {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        .config-select {
+            padding: 12px;
+            background: rgba(35, 35, 55, 0.9);
+            border: 1px solid var(--border-subtle);
+            border-radius: 10px;
+            color: var(--text-primary);
+            font-size: 0.95rem;
+            font-family: inherit;
+        }
+
+        .config-input {
+            padding: 12px;
+            background: rgba(35, 35, 55, 0.9);
+            border: 1px solid var(--border-subtle);
+            border-radius: 10px;
+            color: var(--text-primary);
+            font-size: 0.95rem;
+        }
+
+        /* Audio level */
+        .audio-section {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid var(--border-subtle);
+        }
+
+        .audio-label {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+        }
+
+        .audio-level {
+            height: 8px;
+            background: rgba(99, 102, 241, 0.2);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .audio-level-bar {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, var(--accent-purple), var(--accent-green));
+            transition: width 0.1s ease;
+        }
+
+        /* Start button */
+        .start-btn {
+            width: 100%;
+            padding: 18px;
+            background: linear-gradient(135deg, var(--accent-purple), var(--accent-violet));
+            border: none;
+            border-radius: 14px;
+            color: white;
+            font-size: 1.1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            margin-bottom: 20px;
+        }
+
+        .start-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(99, 102, 241, 0.4);
+        }
+
+        .start-btn.active {
+            background: linear-gradient(135deg, var(--accent-red), #dc2626);
+        }
+
+        /* Transcript */
+        .transcript-card {
+            background: var(--bg-card);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--border-subtle);
+            border-radius: 20px;
+            padding: 24px;
+        }
+
+        .transcript-title {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .transcript-content {
+            max-height: 300px;
+            overflow-y: auto;
+            font-size: 0.95rem;
+            line-height: 1.6;
+            color: var(--text-secondary);
+        }
+
+        .transcript-line {
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border-subtle);
+        }
+
+        .transcript-line:last-child {
+            border-bottom: none;
+        }
+
+        .transcript-speaker {
+            font-weight: 600;
+            color: var(--accent-purple);
+        }
+
+        /* Error */
+        .error-message {
+            display: none;
+            padding: 16px;
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 12px;
+            color: #fca5a5;
+            margin-bottom: 20px;
+        }
+
+        .error-message.show {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="header-left">
+            <a href="/" class="back-btn">←</a>
+            <h1 class="header-title">🎙️ Host Mode</h1>
+        </div>
+        <a href="/settings" class="settings-btn">⚙️</a>
+    </header>
+
+    <main class="main">
+        <!-- Error message -->
+        <div class="error-message" id="errorMessage"></div>
+
+        <!-- Status card -->
+        <div class="status-card">
+            <div class="status-indicator" id="statusIndicator">
+                <span>●</span> Offline
+            </div>
+            <div class="listener-count" id="listenerCount">0</div>
+            <div class="listener-label">Listeners Connected</div>
+
+            <div class="share-section">
+                <div class="share-label">Share this link with your audience:</div>
+                <div class="share-url-box">
+                    <input type="text" class="share-url" id="shareUrl" readonly>
+                    <button class="copy-btn" onclick="copyUrl()">📋</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Start button -->
+        <button id="startBtn" class="start-btn">▶️ Start Broadcasting</button>
+
+        <!-- Config -->
+        <div class="config-card">
+            <h2 class="config-title">⚙️ Configuration</h2>
+            <div class="config-grid">
+                <div class="config-group">
+                    <label class="config-label">Session ID</label>
+                    <input type="text" id="sessionId" class="config-input" value="LECTURE" placeholder="Session ID">
+                </div>
+                <div class="config-group">
+                    <label class="config-label">Source Language</label>
+                    <select id="sourceLang" class="config-select">
+                        <option value="tr" selected>Turkish</option>
+                        <option value="en">English</option>
+                        <option value="es">Spanish</option>
+                        <option value="fr">French</option>
+                        <option value="de">German</option>
+                        <option value="ar">Arabic</option>
+                    </select>
+                </div>
+                <div class="config-group">
+                    <label class="config-label">Target Language</label>
+                    <select id="targetLang" class="config-select">
+                        <option value="en" selected>English</option>
+                        <option value="tr">Turkish</option>
+                        <option value="es">Spanish</option>
+                        <option value="fr">French</option>
+                        <option value="de">German</option>
+                    </select>
+                </div>
+                <div class="config-group">
+                    <label class="config-label">TTS Service</label>
+                    <select id="ttsService" class="config-select">
+                        <option value="elevenlabs">ElevenLabs (Best)</option>
+                        <option value="openai">OpenAI (Cheaper)</option>
+                        <option value="deepgram">Deepgram</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="audio-section">
+                <div class="audio-label">🎤 Microphone Level</div>
+                <div class="audio-level">
+                    <div id="audioLevel" class="audio-level-bar"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Transcript -->
+        <div class="transcript-card">
+            <h2 class="transcript-title">📜 Live Transcript</h2>
+            <div id="transcript" class="transcript-content">
+                <p style="color: var(--text-muted);">Transcript will appear here when broadcasting...</p>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // State
+        let isBroadcasting = false;
+        let ws = null;
+        let mediaRecorder = null;
+        let audioContext = null;
+        let analyser = null;
+        let statusInterval = null;
+
+        // DOM
+        const startBtn = document.getElementById('startBtn');
+        const statusIndicator = document.getElementById('statusIndicator');
+        const listenerCount = document.getElementById('listenerCount');
+        const shareUrl = document.getElementById('shareUrl');
+        const sessionId = document.getElementById('sessionId');
+        const audioLevel = document.getElementById('audioLevel');
+        const transcript = document.getElementById('transcript');
+        const errorMessage = document.getElementById('errorMessage');
+
+        // Update share URL on session ID change
+        sessionId.addEventListener('input', updateShareUrl);
+        updateShareUrl();
+
+        function updateShareUrl() {
+            const id = sessionId.value.toUpperCase().trim() || 'LECTURE';
+            const baseUrl = window.location.origin;
+            shareUrl.value = `${baseUrl}/listen/${id}`;
+        }
+
+        function copyUrl() {
+            shareUrl.select();
+            document.execCommand('copy');
+            // Brief visual feedback
+            const btn = document.querySelector('.copy-btn');
+            btn.textContent = '✓';
+            setTimeout(() => btn.textContent = '📋', 1500);
+        }
+
+        function checkApiKeys() {
+            const keys = localStorage.getItem('rt_api_keys');
+            if (!keys) {
+                showError('Please configure your API keys in Settings first.');
+                return null;
+            }
+            try {
+                const parsed = JSON.parse(keys);
+                if (!parsed.deepgram || !parsed.openai) {
+                    showError('Missing required API keys. Please configure in Settings.');
+                    return null;
+                }
+                return parsed;
+            } catch (e) {
+                showError('Invalid API keys.');
+                return null;
+            }
+        }
+
+        function showError(msg) {
+            errorMessage.textContent = msg;
+            errorMessage.classList.add('show');
+        }
+
+        function hideError() {
+            errorMessage.classList.remove('show');
+        }
+
+        // Start/stop broadcasting
+        startBtn.addEventListener('click', async () => {
+            if (isBroadcasting) {
+                stopBroadcasting();
+            } else {
+                await startBroadcasting();
+            }
+        });
+
+        async function startBroadcasting() {
+            hideError();
+
+            const keys = checkApiKeys();
+            if (!keys) return;
+
+            try {
+                // Get microphone
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 16000 }
+                });
+
+                // Audio level meter
+                audioContext = new AudioContext();
+                const source = audioContext.createMediaStreamSource(stream);
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 256;
+                source.connect(analyser);
+                updateAudioLevel();
+
+                // Connect WebSocket
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const sid = sessionId.value.toUpperCase().trim() || 'LECTURE';
+                ws = new WebSocket(`${protocol}//${window.location.host}/ws/host/${sid}`);
+
+                ws.onopen = () => {
+                    // Determine TTS service: use selection, but if elevenlabs selected without key, fall back to deepgram
+                    let tts = document.getElementById('ttsService').value;
+                    if (tts === 'elevenlabs' && !keys.elevenlabs) {
+                        tts = 'deepgram';  // Fall back to deepgram (free with Deepgram account)
+                        console.log('No ElevenLabs key, falling back to Deepgram TTS');
+                    }
+
+                    // Get translation context from localStorage
+                    const translationContext = localStorage.getItem('rt_context') || '';
+
+                    // Send config
+                    ws.send(JSON.stringify({
+                        type: 'config',
+                        api_keys: keys,
+                        source_lang: document.getElementById('sourceLang').value,
+                        target_lang: document.getElementById('targetLang').value,
+                        tts_service: tts,
+                        context: translationContext
+                    }));
+
+                    // Start recording
+                    mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+                    mediaRecorder.ondataavailable = (e) => {
+                        if (e.data.size > 0 && ws.readyState === WebSocket.OPEN) {
+                            ws.send(e.data);
+                        }
+                    };
+                    mediaRecorder.start(250);
+
+                    isBroadcasting = true;
+                    updateUI();
+                    startStatusPolling();
+                };
+
+                ws.onmessage = (e) => {
+                    const data = JSON.parse(e.data);
+                    if (data.type === 'transcript') {
+                        addTranscriptLine(data.speaker || 'Speaker', data.text, 'original');
+                    } else if (data.type === 'translation') {
+                        addTranscriptLine(data.speaker || 'Speaker', data.text, 'translation');
+                    } else if (data.type === 'status') {
+                        listenerCount.textContent = data.listener_count || 0;
+                    } else if (data.type === 'error') {
+                        showError(data.message);
+                    }
+                };
+
+                ws.onerror = () => {
+                    showError('Connection error. Please try again.');
+                    stopBroadcasting();
+                };
+
+                ws.onclose = () => {
+                    if (isBroadcasting) stopBroadcasting();
+                };
+
+            } catch (err) {
+                if (err.name === 'NotAllowedError') {
+                    showError('Microphone access denied.');
+                } else {
+                    showError(`Error: ${err.message}`);
+                }
+            }
+        }
+
+        function stopBroadcasting() {
+            isBroadcasting = false;
+
+            if (mediaRecorder?.state !== 'inactive') mediaRecorder?.stop();
+            ws?.close();
+            audioContext?.close();
+            clearInterval(statusInterval);
+
+            ws = null;
+            audioContext = null;
+            updateUI();
+        }
+
+        function updateUI() {
+            if (isBroadcasting) {
+                startBtn.textContent = '⏹️ Stop Broadcasting';
+                startBtn.classList.add('active');
+                statusIndicator.innerHTML = '<span>●</span> Live';
+                statusIndicator.classList.add('live');
+            } else {
+                startBtn.textContent = '▶️ Start Broadcasting';
+                startBtn.classList.remove('active');
+                statusIndicator.innerHTML = '<span>●</span> Offline';
+                statusIndicator.classList.remove('live');
+                audioLevel.style.width = '0%';
+            }
+        }
+
+        function updateAudioLevel() {
+            if (!analyser || !isBroadcasting) return;
+            const data = new Uint8Array(analyser.frequencyBinCount);
+            analyser.getByteFrequencyData(data);
+            const avg = data.reduce((a, b) => a + b, 0) / data.length;
+            audioLevel.style.width = `${Math.min(100, (avg / 128) * 100)}%`;
+            requestAnimationFrame(updateAudioLevel);
+        }
+
+        function addTranscriptLine(speaker, text, type) {
+            if (transcript.querySelector('p[style]')) {
+                transcript.innerHTML = '';
+            }
+            const line = document.createElement('div');
+            line.className = 'transcript-line';
+            line.innerHTML = `<span class="transcript-speaker">[${speaker}]</span> ${text}`;
+            if (type === 'translation') {
+                line.style.color = 'var(--text-primary)';
+            }
+            transcript.appendChild(line);
+            transcript.scrollTop = transcript.scrollHeight;
+        }
+
+        function startStatusPolling() {
+            statusInterval = setInterval(async () => {
+                try {
+                    const res = await fetch('/api/producer/status');
+                    const data = await res.json();
+                    listenerCount.textContent = data.listener_count || 0;
+                } catch (e) { }
+            }, 2000);
+        }
+    </script>
+</body>
+
+</html>
